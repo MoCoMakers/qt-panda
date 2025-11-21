@@ -14,6 +14,7 @@ Click on any step below to jump to the detailed instructions:
 4. [**Step 4: Run Approach Sequence**](#step-4-run-approach-sequence) - Bring tip close to sample using automated approach
 5. [**Step 5: Fine-Tune Position and Test Scans**](#step-5-fine-tune-position-and-test-scans) - Optimize tip position and verify scanning functionality
 6. [**Reset Procedure**](#reset-procedure) - How to safely reset the system and recover from issues
+7. [**Probe Retraction Techniques**](#probe-retraction-techniques) - Methods for retracting the probe tip (manual rotation or command-based)
 
 ## Prerequisites
 
@@ -99,10 +100,16 @@ Click on any step below to jump to the detailed instructions:
 
 **Procedure:**
 1. Locate the **Bias Control** in the DAC Control section
-2. Enter the DAC value: **60000** in the Bias entry field
+2. Enter a DAC value in the Bias entry field (DAC range: 0 to 65535, out of 2^16 = 65536 total values)
 3. Click the **Bias** button to set the voltage
    - **Note:** If you just performed a reset (Step 2), you must click the Bias button now to restore the bias voltage setting, as reset clears all DAC values
-4. Verify the display label shows the converted voltage: approximately **-2.493 V**
+4. Verify the display label shows the converted voltage
+
+**Bias Voltage Testing Progression:**
+- **Initial test value**: DAC = **60000** → approximately **-2.493 V**
+- **Stepped down to**: DAC = **50000** → approximately **-1.580 V**
+- **Further reduced to**: DAC = **45000** → approximately **-1.121 V**
+- **Status**: Still testing optimal values - these may be adjusted based on sample characteristics and measurement requirements
 
 **Voltage Calculation:**
 The bias voltage conversion formula is:
@@ -110,10 +117,22 @@ The bias voltage conversion formula is:
 bias_volts = -1.0 * (dac - 32768) / 32768 * 3.0
 ```
 
-For DAC = 60000:
+**Tested Values:**
+
+For DAC = 60000 (initial test):
 - `bias_volts = -1.0 * (60000 - 32768) / 32768 * 3.0`
 - `bias_volts = -1.0 * 27232 / 32768 * 3.0`
 - `bias_volts ≈ -2.493 V`
+
+For DAC = 50000 (stepped down):
+- `bias_volts = -1.0 * (50000 - 32768) / 32768 * 3.0`
+- `bias_volts = -1.0 * 17232 / 32768 * 3.0`
+- `bias_volts ≈ -1.580 V`
+
+For DAC = 45000 (further reduced):
+- `bias_volts = -1.0 * (45000 - 32768) / 32768 * 3.0`
+- `bias_volts = -1.0 * 12232 / 32768 * 3.0`
+- `bias_volts ≈ -1.121 V`
 
 **Hardware Verification:**
 1. Locate the exposed bias voltage test points on the STM controller board
@@ -124,7 +143,10 @@ For DAC = 60000:
 4. Read the voltage displayed on the multimeter
 
 **Expected Results:**
-- Multimeter should read approximately **-2.493 V** (or very close, within ±0.01 V)
+- Multimeter should read the voltage corresponding to your selected DAC value
+  - DAC = 60000 → approximately **-2.493 V**
+  - DAC = 50000 → approximately **-1.580 V**
+  - DAC = 45000 → approximately **-1.121 V**
 - The sign should be negative (tip negative relative to sample, or sample positive relative to tip)
 - Small variations (±0.01-0.02 V) are acceptable due to:
   - DAC resolution limits
@@ -144,7 +166,7 @@ For DAC = 60000:
   - Check for loose connections
 - **If voltage is zero**: 
   - Verify the Bias command was sent successfully
-  - Check status display to confirm bias DAC value is 60000
+  - Check status display to confirm bias DAC value matches your input
   - Check for short circuits or disconnected outputs
 - **If polarity is wrong**: 
   - Verify probe connections (red to positive, black to ground)
@@ -153,9 +175,14 @@ For DAC = 60000:
 
 **Additional Test Points:**
 You can test other bias voltages to verify linearity:
-- DAC = 32768 → Should give 0.000 V
+- DAC = 32768 → Should give 0.000 V (center point)
+- DAC = 60000 → Approximately -2.493 V (initial test value)
+- DAC = 50000 → Approximately -1.580 V (stepped down, currently testing)
+- DAC = 45000 → Approximately -1.121 V (further reduced, currently testing)
 - DAC = 40000 → Should give approximately -0.662 V
 - DAC = 25000 → Should give approximately +0.711 V
+
+**Note:** Optimal bias voltage depends on sample characteristics, tip condition, and measurement goals. The values 50000 and 45000 are currently being tested and may be adjusted based on experimental results.
 
 ---
 
@@ -285,11 +312,11 @@ Use the command: `PIDS Kp Ki Kd` (e.g., `PIDS 0.5 0.05 0.005`)
    - Locate the power switch or disconnect power to the motor controller
    - This prevents any automatic movements during reset
 
-2. **Manually crank back the tip** (if plunged):
-   - Use the manual adjustment mechanism on the STM head
-   - Crank the tip **backward/away** from the sample
-   - Move it to a safe distance (several millimeters away)
-   - **Important**: Do this while motor is powered off to avoid conflicts
+2. **Retract the probe tip** (if plunged):
+   - **Option A - Command-based (Recommended)**: Use `MTMV -500` or larger negative values to retract significantly (see [Probe Retraction Techniques](#probe-retraction-techniques) section)
+   - **Option B - Manual rotation**: Power off motor, then manually rotate the rotor to retract tip (see [Probe Retraction Techniques](#probe-retraction-techniques) section)
+   - Move tip to a safe distance (several millimeters away)
+   - **Important**: If using manual rotation, motor must be powered off to avoid conflicts
 
 3. **Power on the motor controller**:
    - Restore power to the motor controller
@@ -320,6 +347,88 @@ Use the command: `PIDS Kp Ki Kd` (e.g., `PIDS 0.5 0.05 0.005`)
 
 ---
 
+## Probe Retraction Techniques
+
+When you need to retract the probe tip away from the sample (e.g., after a plunge, before sample changes, or for safety), there are two methods available:
+
+### Method 1: Manual Rotation (Physical)
+
+**When to use:** Quick physical retraction, especially after a plunge or when the system is unresponsive.
+
+**Procedure:**
+1. **CRITICAL: Power off the stepper motor controller first**
+   - Locate the power switch or disconnect power to the motor controller
+   - **Never attempt manual rotation while the motor is powered** - this can damage the motor or cause conflicts
+2. Locate the manual adjustment mechanism (rotor) on the STM head
+3. Manually rotate the rotor to move the tip **backward/away** from the sample
+4. Rotate until the tip is retracted to a safe distance (several millimeters away)
+5. Power the motor controller back on before resuming operations
+
+**Advantages:**
+- Fast physical retraction
+- Works even if system is unresponsive
+- No need for GUI connection
+
+**Disadvantages:**
+- Requires physical access to the STM head
+- Motor must be powered off
+- Step count may not be accurately tracked
+
+**Safety:**
+- ⚠️ **Always power off the motor before manual rotation**
+- Move slowly and carefully
+- Ensure tip is fully retracted before powering motor back on
+
+---
+
+### Method 2: Command-Based Retraction (Recommended)
+
+**When to use:** Controlled retraction with accurate step tracking, preferred method for significant retractions.
+
+**Procedure:**
+1. Ensure the GUI is connected and communication is active
+2. Locate the **Command Text Box** in the Manual Command Interface section
+3. For significant retraction (e.g., after a plunge or to return to starting position), use a large negative step value:
+   - **Command:** `MTMV -500` (moves motor 500 steps backward/away from sample)
+   - For even larger retractions, you can use: `MTMV -1000` or `MTMV -2000`
+4. Click **Send** button
+5. Monitor the **Real-Time Steps Plot** to verify the step count decreases
+6. Monitor the **Real-Time Current Plot** - current should decrease as tip moves away
+7. Repeat with additional retraction commands if needed until current is near baseline
+
+**Recommended Retraction Distances:**
+- **Small adjustment**: `MTMV -10` to `MTMV -50` steps
+- **Moderate retraction**: `MTMV -100` to `MTMV -200` steps
+- **Significant retraction** (after plunge or sample change): `MTMV -500` to `MTMV -1000` steps
+- **Full retraction** (return to starting position): `MTMV -2000` or more steps
+
+**Advantages:**
+- Accurate step tracking
+- Can be done while system is running
+- No need to power off motor
+- Precise control over retraction distance
+- Can monitor current and step count in real-time
+
+**Disadvantages:**
+- Requires GUI connection
+- Takes longer than manual rotation for very large distances
+
+**Safety:**
+- Monitor current plot continuously - if current doesn't decrease, tip may be stuck
+- Use STOP button if anything unexpected happens
+- For very large retractions (1000+ steps), consider breaking into smaller increments (e.g., multiple `MTMV -500` commands)
+
+**Example Workflow for Significant Retraction:**
+```
+1. MTMV -500  (retract 500 steps)
+2. Monitor current plot - wait for current to stabilize
+3. If still too close, repeat: MTMV -500
+4. Continue until current is near baseline (±10-100 pA)
+5. Verify step count has decreased appropriately
+```
+
+---
+
 ## Post-Setup Verification Checklist
 
 After completing all steps, verify:
@@ -341,13 +450,15 @@ After completing all steps, verify:
 
 If you need to move the step motor backward (away from the sample), you can use the manual command interface:
 
-**Command:** `MTMV -1`
+**Command:** `MTMV -<steps>`
 
 **How to use:**
 1. Locate the **Command Text Box** in the Manual Command Interface section
-2. Type: `MTMV -1` (this moves the motor 1 step backward/away from sample)
+2. Type: `MTMV -<number>` where `<number>` is the number of steps to move backward
+   - Example: `MTMV -1` (moves 1 step backward)
+   - Example: `MTMV -500` (moves 500 steps backward - for significant retraction)
 3. Click **Send** button
-4. The motor will move backward by 1 step
+4. The motor will move backward by the specified number of steps
 
 **Notes:**
 - **MTMV** stands for "Move Motor"
@@ -357,16 +468,24 @@ If you need to move the step motor backward (away from the sample), you can use 
 - Monitor the **Real-Time Steps Plot** to see the step count change
 - Use this for fine manual positioning or to back away if you get too close during approach
 
+**Step Size Guidelines:**
+- **Fine positioning** (close to sample): `MTMV -1` to `MTMV -10` (small increments)
+- **Moderate retraction**: `MTMV -50` to `MTMV -200` (medium increments)
+- **Significant retraction** (after plunge or sample change): `MTMV -500` to `MTMV -1000` (large increments)
+- See [Probe Retraction Techniques](#probe-retraction-techniques) section for detailed retraction procedures
+
 **When to use:**
 - Backing away after getting too close during approach
 - Fine manual positioning before starting measurements
 - Adjusting tip-sample distance incrementally
 - Recovering from a situation where the tip is too close
+- Significant retraction after a plunge (use `MTMV -500` or larger)
 
 **Safety:**
 - Move slowly (1 step at a time) when close to the sample
-- Monitor the current plot - if current increases suddenly, stop immediately
+- For large retractions, monitor current plot - current should decrease as tip moves away
 - Use STOP button if anything unexpected happens
+- If current doesn't decrease during retraction, tip may be stuck - stop and investigate
 
 ## Next Steps
 
