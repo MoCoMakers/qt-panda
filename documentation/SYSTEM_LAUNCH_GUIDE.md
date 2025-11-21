@@ -96,20 +96,28 @@ Click on any step below to jump to the detailed instructions:
 
 **Important:** If you performed Step 2 (Reset), you must set the bias voltage in this step. After a reset, all DAC values are cleared and need to be set again.
 
-**Objective:** Set a known bias voltage and verify it using a multimeter on exposed test points, confirming the DAC-to-voltage conversion is working correctly.
+**Objective:** Set the bias voltage to the default value and verify it using a multimeter on exposed test points, confirming the DAC-to-voltage conversion is working correctly.
+
+**Default Bias Voltage Setup:**
+- **Use the default bias value**: DAC = **33314** → approximately **-0.049 V** (about **-50 mV**)
+- This is the standard operating bias voltage, matching mechPanda and Dan's systems (just opposite sign)
+- **Do not change this value** - keep it at the default for normal operation
+- The default value is already pre-filled in the Bias entry field when you launch the GUI
 
 **Procedure:**
 1. Locate the **Bias Control** in the DAC Control section
-2. Enter a DAC value in the Bias entry field (DAC range: 0 to 65535, out of 2^16 = 65536 total values)
+2. **Verify the default value** is present in the Bias entry field (should show **33314**)
+   - If the field is empty or shows a different value, enter **33314**
 3. Click the **Bias** button to set the voltage
    - **Note:** If you just performed a reset (Step 2), you must click the Bias button now to restore the bias voltage setting, as reset clears all DAC values
-4. Verify the display label shows the converted voltage
+4. Verify the display label shows the converted voltage (should display approximately **-0.049 V** or **-50 mV**)
 
-**Bias Voltage Testing Progression:**
-- **Initial test value**: DAC = **60000** → approximately **-2.493 V**
-- **Stepped down to**: DAC = **50000** → approximately **-1.580 V**
-- **Further reduced to**: DAC = **45000** → approximately **-1.121 V**
-- **Status**: Still testing optimal values - these may be adjusted based on sample characteristics and measurement requirements
+**Note on Previous Testing Values:**
+The following values were used during initial testing but are **not recommended for normal operation**:
+- DAC = **60000** → approximately **-2.493 V** (initial test value, too high)
+- DAC = **50000** → approximately **-1.580 V** (stepped down, still too high)
+- DAC = **45000** → approximately **-1.121 V** (further reduced, still too high)
+- **For normal operation, use the default: DAC = 33314 → -0.049 V (-50 mV)**
 
 **Voltage Calculation:**
 The bias voltage conversion formula is:
@@ -143,10 +151,7 @@ For DAC = 45000 (further reduced):
 4. Read the voltage displayed on the multimeter
 
 **Expected Results:**
-- Multimeter should read the voltage corresponding to your selected DAC value
-  - DAC = 60000 → approximately **-2.493 V**
-  - DAC = 50000 → approximately **-1.580 V**
-  - DAC = 45000 → approximately **-1.121 V**
+- Multimeter should read approximately **-0.049 V** (or **-50 mV**) for the default DAC value of 33314
 - The sign should be negative (tip negative relative to sample, or sample positive relative to tip)
 - Small variations (±0.01-0.02 V) are acceptable due to:
   - DAC resolution limits
@@ -173,16 +178,14 @@ For DAC = 45000 (further reduced):
   - Check if the bias circuit has inverted outputs
   - Verify the conversion formula matches your hardware
 
-**Additional Test Points:**
-You can test other bias voltages to verify linearity:
+**Additional Test Points (for verification only):**
+You can test other bias voltages to verify linearity, but **use the default (33314) for normal operation**:
+- DAC = 33314 → Approximately **-0.049 V** (**-50 mV**) - **DEFAULT, use this for normal operation**
 - DAC = 32768 → Should give 0.000 V (center point)
-- DAC = 60000 → Approximately -2.493 V (initial test value)
-- DAC = 50000 → Approximately -1.580 V (stepped down, currently testing)
-- DAC = 45000 → Approximately -1.121 V (further reduced, currently testing)
 - DAC = 40000 → Should give approximately -0.662 V
 - DAC = 25000 → Should give approximately +0.711 V
 
-**Note:** Optimal bias voltage depends on sample characteristics, tip condition, and measurement goals. The values 50000 and 45000 are currently being tested and may be adjusted based on experimental results.
+**Note:** The default bias voltage of -0.049 V (-50 mV) is the standard operating value, matching mechPanda and Dan's systems (just opposite sign). This provides a small, safe bias for tunneling current measurements without excessive voltage that could damage the tip or sample.
 
 ---
 
@@ -242,16 +245,27 @@ You can test other bias voltages to verify linearity:
    - Use command: `MTMV 1` (moves 1 step forward)
    - Monitor current plot - current should gradually increase
    - Stop if current spikes dramatically
-4. **Test small scans** once position is stable:
+4. **Set Constant Current Mode OFF before scanning**:
+   - Locate the **"ConstCurrentOFF"** button in the Constant Current Mode section
+   - Click **"ConstCurrentOFF"** to disable constant current mode
+   - **Important**: We want to scan in constant height mode (constant current OFF) initially - this means the tip height (DACZ) will remain fixed, and we'll observe current variations in the ADC scan image. We don't want the topology aspects of a variable Z yet.
+   - Verify that constant current mode is off (status display should show `ConstCurrent: False`)
+
+5. **Test small scans** once position is stable and constant current mode is OFF:
    - Configure a small scan area (e.g., 10×10 pixels)
    - Start scan and observe the scan plot
    - Verify tip moves smoothly without plunging
-5. **Iterate on MTMV command values**:
+   - **Expected behavior in constant height mode**: 
+     - DACZ Scan Image will appear relatively flat/constant (tip height is fixed)
+     - ADC Scan Image will show current variations (features visible in current map)
+6. **Iterate on MTMV command values**:
    - Try different step sizes (1, 2, 5 steps) to find optimal movement
    - Goal: Find step sizes that allow smooth approach without plunging
    - Document successful step sizes for future reference
 
-**Optimizing PID Control Values:**
+**Optimizing PID Control Values (Future Use):**
+
+**Note:** PID control is only used when constant current mode is ON. Since we're currently operating in constant height mode (constant current OFF), PID tuning is not needed at this stage. The following information is for future reference when you enable constant current mode.
 
 The system uses PID (Proportional-Integral-Derivative) control for maintaining constant current during scanning. While detailed PID optimization will be covered in future documentation, here are starting concepts:
 
@@ -287,8 +301,12 @@ Use the command: `PIDS Kp Ki Kd` (e.g., `PIDS 0.5 0.05 0.005`)
 
 **Expected Results:**
 - Tip position should be stable (not plunged)
+- Constant current mode should be OFF before scanning
 - Small scans should complete without errors
-- Current should remain relatively constant during scanning
+- In constant height mode (constant current OFF):
+  - Current will vary naturally with tip-sample distance
+  - DACZ Scan Image will appear flat/constant (tip height fixed)
+  - ADC Scan Image will show current variations and sample features
 - Scan images should show sample features, not noise or artifacts
 
 **Troubleshooting:**
