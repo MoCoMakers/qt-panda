@@ -64,10 +64,50 @@ class PlotFrame(ttk.Frame):
         self.image = self.figure.add_subplot(
             111).imshow(image, interpolation='none', norm='linear', origin="lower")
 
+    def set_yscale(self, scale_type='linear', symlog_linthresh=1e-10):
+        """Set Y-axis scale to linear or symlog.
+        
+        Args:
+            scale_type: 'linear' or 'symlog'
+            symlog_linthresh: threshold for symlog scale (default 1e-10)
+        """
+        ax = self.figure.get_axes()[0]
+        if scale_type == 'symlog':
+            ax.set_yscale('symlog', linthresh=symlog_linthresh)
+        else:
+            ax.set_yscale('linear')
+        # Enable autoscaling on Y-axis after changing scale
+        ax.set_autoscaley_on(True)
+        ax.relim()
+        ax.autoscale_view()
+        self.canvas.draw()
+        self.canvas.flush_events()
+
+    def set_xaxis_range(self, x_min=None, x_max=None):
+        """Set X-axis range.
+        
+        Args:
+            x_min: minimum X value (None for auto)
+            x_max: maximum X value (None for auto)
+        """
+        ax = self.figure.get_axes()[0]
+        if x_min is not None and x_max is not None:
+            ax.set_xlim(x_min, x_max)
+            ax.set_autoscalex_on(False)
+        else:
+            ax.set_autoscalex_on(True)
+            ax.relim()
+        ax.autoscale_view()
+        self.canvas.draw()
+        self.canvas.flush_events()
+
     def update_plot(self, x_data, y_data):
         self.plot.set_xdata(x_data)
         self.plot.set_ydata(y_data)
         ax = self.figure.get_axes()[0]
+        # Ensure autoscaling is enabled for both axes
+        ax.set_autoscalex_on(True)
+        ax.set_autoscaley_on(True)
         ax.relim()
         ax.autoscale_view()
         # We need to draw *and* flush
@@ -112,6 +152,45 @@ class App(tk.Tk):
             label="current", xlabel='time(s)', ylabel='adc')
         self.real_time_current_plot_frame.grid(
             row=0, column=0, padx=10, pady=5)
+
+        # Add radio button controls for Y-scale selection (ADC plot)
+        self.adc_yscale_var = tk.StringVar(value='linear')
+        adc_scale_frame = ttk.LabelFrame(self.image_frame, text="ADC Y-Scale")
+        adc_scale_frame.grid(row=1, column=0, padx=10, pady=5, sticky=tk.W)
+        
+        linear_radio = ttk.Radiobutton(
+            adc_scale_frame, text="Linear", variable=self.adc_yscale_var, 
+            value='linear', command=lambda: self.real_time_current_plot_frame.set_yscale('linear'))
+        linear_radio.grid(row=0, column=0, padx=5, pady=2, sticky=tk.W)
+        
+        symlog_radio = ttk.Radiobutton(
+            adc_scale_frame, text="SymLog (±1e-10)", variable=self.adc_yscale_var, 
+            value='symlog', command=lambda: self.real_time_current_plot_frame.set_yscale('symlog', symlog_linthresh=1e-10))
+        symlog_radio.grid(row=0, column=1, padx=5, pady=2, sticky=tk.W)
+
+        # Add X-axis range controls for ADC plot
+        self.adc_xrange_var = tk.StringVar(value='all')
+        adc_xrange_frame = ttk.LabelFrame(self.image_frame, text="ADC X-Range")
+        adc_xrange_frame.grid(row=2, column=0, padx=10, pady=5, sticky=tk.W)
+        
+        all_radio = ttk.Radiobutton(
+            adc_xrange_frame, text="All", variable=self.adc_xrange_var,
+            value='all', command=lambda: self.real_time_current_plot_frame.set_xaxis_range(None, None))
+        all_radio.grid(row=0, column=0, padx=5, pady=2, sticky=tk.W)
+        
+        ttk.Label(adc_xrange_frame, text="Last (s):").grid(row=0, column=1, padx=5, pady=2, sticky=tk.W)
+        
+        self.adc_xrange_last_var = tk.StringVar(value="10")
+        xrange_entry = ttk.Entry(adc_xrange_frame, textvariable=self.adc_xrange_last_var, width=8)
+        xrange_entry.grid(row=0, column=2, padx=2, pady=2, sticky=tk.W)
+        
+        last_radio = ttk.Radiobutton(
+            adc_xrange_frame, text="Range", variable=self.adc_xrange_var,
+            value='last', command=self._update_adc_xrange)
+        last_radio.grid(row=0, column=3, padx=5, pady=2, sticky=tk.W)
+        
+        # Bind entry field to update range when text changes
+        xrange_entry.bind('<Return>', lambda e: self._update_adc_xrange())
 
         self.real_time_steps_plot_frame = PlotFrame(
             self.image_frame, dpi=100.0,  with_toobar=True, width=self.baseline_size, height=self.baseline_size)
@@ -264,7 +343,7 @@ class App(tk.Tk):
         # call `_open_cmd` which updates this label on success/failure.
         try:
             if detected_port:
-                detect_text = f"Teensy detected: (not opened)"
+                detect_text = f"Teensy detected"
                 detect_fg = 'green'
             else:
                 detect_text = "Teensy not detected"
@@ -286,7 +365,7 @@ class App(tk.Tk):
                     detect_label.config(foreground='orange')
                     return
                 self.stm.open(port)
-                detect_var.set(f"Opened: {port}")
+                detect_var.set(f"")
                 detect_label.config(foreground='green')
             except Exception as e:
                 detect_var.set(f"Open failed: {e}")
@@ -516,6 +595,21 @@ class App(tk.Tk):
     def _reset(self):
         self.stm.reset()
 
+    def _update_adc_xrange(self):
+        """Update ADC plot X-axis range based on the selected mode."""
+        if self.adc_xrange_var.get() == 'all':
+            self.real_time_current_plot_frame.set_xaxis_range(None, None)
+        else:  # 'last'
+            try:
+                last_seconds = float(self.adc_xrange_last_var.get())
+                if last_seconds > 0:
+                    x_max = 0  # current time is always at 0 in our relative scaling
+                    x_min = -last_seconds
+                    self.real_time_current_plot_frame.set_xaxis_range(x_min, x_max)
+            except ValueError:
+                # Invalid input, ignore
+                pass
+
     def _update_real_time(self):
         if not self.stm.busy:
             status = self.stm.get_status()
@@ -530,6 +624,10 @@ class App(tk.Tk):
 
             self.real_time_current_plot_frame.update_plot(plot_x, plot_adc)
             self.real_time_steps_plot_frame.update_plot(plot_x, plot_steps)
+            
+            # Apply X-axis range setting to ADC plot
+            if self.adc_xrange_var.get() == 'last':
+                self._update_adc_xrange()
         self.after(100, self._update_real_time)
 
     def _update_images(self):
