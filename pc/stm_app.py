@@ -6,6 +6,7 @@ import stm_control
 import time
 import csv
 import threading
+import platform
 
 
 from matplotlib.backends.backend_tkagg import (
@@ -13,6 +14,7 @@ from matplotlib.backends.backend_tkagg import (
 from matplotlib.figure import Figure
 from matplotlib import rcParams
 rcParams.update({'figure.autolayout': True})
+# Teensy port detection is provided by stm_control.find_teensy_port()
 
 
 def save_data_to_file(filename_prefix, data_to_store: list):
@@ -96,7 +98,7 @@ class App(tk.Tk):
         # STM configs
         self.stm = stm_control.STM()
 
-        self.wm_title("Panda STM")
+        self.wm_title("QT-Panda STM")
         self.baseline_size = 500 # changed from 700
 
         self.image_frame = ttk.Frame(
@@ -253,10 +255,104 @@ class App(tk.Tk):
                     master=self, text="Scan", command=_set_values)
                 button.grid(row=2, column=0, sticky=tk.W)
 
-        open_frame = _ButtonWithEntry(button_frame,  "Open", [
-            "COM7"],  self.stm.open)
-        open_frame.grid(row=row_number, column=0, pady=5, sticky=tk.W)
-        row_number += 1
+        # Try to auto-detect Teensy port; fallback to empty string if not found
+        detected_port = stm_control.find_teensy_port()
+        open_default = detected_port if detected_port is not None else ""
+
+        # Status variable/label to show detection and open result. We do not
+        # auto-open the port; the user must press Open. The Open button will
+        # call `_open_cmd` which updates this label on success/failure.
+        try:
+            if detected_port:
+                detect_text = f"Teensy detected: (not opened)"
+                detect_fg = 'green'
+            else:
+                detect_text = "Teensy not detected"
+                detect_fg = 'red'
+        except Exception:
+            detect_text = "Teensy detection error"
+            detect_fg = 'red'
+
+        detect_var = tk.StringVar(value=detect_text)
+        detect_label = ttk.Label(button_frame, textvariable=detect_var, foreground=detect_fg)
+
+        def _open_cmd(port_str):
+            # Called by the Open button (from _ButtonWithEntry). Update label
+            # to reflect success/failure.
+            try:
+                port = port_str if port_str else None
+                if not port:
+                    detect_var.set("No port specified")
+                    detect_label.config(foreground='orange')
+                    return
+                self.stm.open(port)
+                detect_var.set(f"Opened: {port}")
+                detect_label.config(foreground='green')
+            except Exception as e:
+                detect_var.set(f"Open failed: {e}")
+                detect_label.config(foreground='red')
+
+        open_frame = _ButtonWithEntry(button_frame, "Open", [open_default], _open_cmd)
+        open_frame.grid(row=row_number, column=0, pady=5, padx=0, sticky=tk.W)
+
+        # Move Scan control and detection label to the row below the Open
+        # control. Use `_ButtonWithEntry` for the Scan button to keep the
+        # control styling consistent.
+
+        def _scan_ports():
+            try:
+                port = stm_control.find_teensy_port()
+                if port:
+                    detect_var.set(f"Teensy detected, not opened")
+                    detect_label.config(foreground='green')
+                    # Update the Open entry's first input var if available
+                    try:
+                        var = open_frame.input_string_var_list[0]
+                        try:
+                            var.set(port)
+                        except Exception:
+                            try:
+                                var.initialize(port)
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+                else:
+                    detect_var.set("Teensy not detected")
+                    detect_label.config(foreground='red')
+            except Exception as e:
+                detect_var.set(f"Scan error: {e}")
+                detect_label.config(foreground='red')
+
+        scan_frame = _ButtonWithEntry(button_frame, "Scan Ports", [], _scan_ports, display_list=[detect_label])
+        scan_frame.grid(row=row_number+1, column=0, pady=0, padx=0, sticky=tk.W)
+
+        # place the detect label on the same new row on the right side
+        detect_label.grid(row=row_number+1, column=1, padx=8, sticky=tk.W)
+
+        # Make layout responsive: allow detection label to expand/wrap on narrow widths
+        try:
+            button_frame.columnconfigure(0, weight=0)
+            button_frame.columnconfigure(1, weight=0)
+            button_frame.columnconfigure(2, weight=1)
+        except Exception:
+            pass
+
+        def _update_wrap(event=None):
+            try:
+                # Give detect_label a wraplength so it wraps on narrow windows
+                total_w = button_frame.winfo_width() or 300
+                # reserve ~220px for the Open control + Scan button
+                wrap = max(80, total_w - 220)
+                detect_label.config(wraplength=wrap)
+            except Exception:
+                pass
+
+        # Update wrap initially and on resize
+        _update_wrap()
+        button_frame.bind('<Configure>', _update_wrap)
+
+        row_number += 2
 
         _stop_rest_clear = _MultipleButtons(button_frame, ["STOP", "Reset", "Clear"], [
                                             self.stm.stop, self.stm.reset, self.stm.clear])
@@ -406,7 +502,11 @@ class App(tk.Tk):
 
         self._update_real_time()
         # Default put the windows to be largest.
-        self.state('zoomed')
+        # Maximize window based on the operating system
+        if platform.system() == "windows":
+            self.state('zoomed')
+        else: # Assume Linux/maxOS for other cases
+            self.attributes('-zoomed', True)
 
     def _quit(self):
         self.quit()     # stops mainloop

@@ -6,6 +6,44 @@ from collections import deque
 import time
 
 import pathlib
+import platform
+from serial.tools import list_ports
+
+
+def find_teensy_port():
+    """Return the device path for a connected Teensy board or None.
+
+    Detection heuristic (ordered):
+    - Prefer ports whose VID/PID match known Teensy values (e.g. VID 0x16C0).
+    - Next prefer ports whose `manufacturer`, `product`, or `description`
+      contains the string "Teensy" (case-insensitive).
+    - Return the first matching `port.device` or `None` if none found.
+    """
+    TEENSY_VIDS = {0x16C0}
+
+    ports = list(list_ports.comports())
+
+    # 1) Try VID/PID matching
+    for port in ports:
+        try:
+            if getattr(port, 'vid', None) in TEENSY_VIDS:
+                return port.device
+        except Exception:
+            pass
+
+    # 2) Fall back to string heuristics (manufacturer/product/description)
+    for port in ports:
+        try:
+            manuf = (port.manufacturer or "")
+            prod = (port.product or "")
+            desc = (port.description or "")
+            combined = f"{manuf} {prod} {desc}".lower()
+            if 'teensy' in combined:
+                return port.device
+        except Exception:
+            continue
+
+    return None
 
 
 @dataclass
@@ -55,7 +93,7 @@ class STM_Status:
         return -1.0 * (dac - 32768) / 32768 * 3.0
 
     def to_string(self):
-        return """STM Status:
+        return ("""STM Status:
 Bias: {} 
 Z: {} 
 X: {} 
@@ -65,7 +103,10 @@ STEPS: {}
 Appoaching: {} 
 ConstCurrent: {} 
 Scan: {}  
-Time: {}""".format(self.bias, self.dac_z, self.dac_x, self.dac_y, self.adc, self.steps, self.is_approaching,  self.is_const_current, self.is_scanning, self.time_millis)
+Time: {}"""
+                .format(self.bias, self.dac_z, self.dac_x, self.dac_y,
+                        self.adc, self.steps, self.is_approaching,
+                        self.is_const_current, self.is_scanning, self.time_millis))
 
 
 class STM(object):
@@ -86,8 +127,27 @@ class STM(object):
         self.scan_dacz = np.ones([512, 512], dtype=np.float32)
 
     def open(self, device):
+        """Open the serial port and try to set a larger internal buffer if available.
+
+        set_buffer_size is available on some pyserial builds (Windows). On Linux
+        this method may not exist — we check with hasattr and wrap calls in
+        try/except to avoid errors.
+        """
         self.stm_serial = serial.Serial(device, 115200, timeout=1)
-        self.stm_serial.set_buffer_size(rx_size=128000, tx_size=128000)
+
+        # Try to increase buffer size only when the method exists and we're
+        # on a Windows-like OS. Use lowercase comparison for robustness.
+        try:
+            if platform.system().lower() == 'windows' and hasattr(self.stm_serial, 'set_buffer_size'):
+                try:
+                    self.stm_serial.set_buffer_size(rx_size=128000, tx_size=128000)
+                except Exception:
+                    # Non-fatal if buffer sizing fails
+                    pass
+        except Exception:
+            # Ignore any unexpected errors during buffer setup
+            pass
+
         self.is_opened = True
 
     def get_status(self):
@@ -103,7 +163,7 @@ class STM(object):
                 status_value = status_str.split(',')
                 status_value = [int(x) for x in status_value]
                 self.status = STM_Status.from_list(status_value)
-            except:
+            except Exception:
                 print('no response')
                 return self.history[-1]
         else:
@@ -136,7 +196,7 @@ class STM(object):
 
     def measure_iv_curve(self, dac_start, dac_end, dac_step):
         self.send_cmd(f'IVME {dac_start} {dac_end} {dac_step}')
-        # Wait for 0.1s for the STM to response
+        # Wait for device to prepare
         time.sleep(2)
         return self.get_iv_curve()
 
@@ -183,13 +243,12 @@ class STM(object):
             f"SCST {x_start} {x_end} {x_resolution} {y_start} {y_end} {y_resolution} {sample_number}")
 
         self.scan_adc = np.ones([x_resolution, y_resolution], dtype=np.float32)
-        self.scan_dacz = np.ones(
-            [x_resolution, y_resolution], dtype=np.float32)
+        self.scan_dacz = np.ones([
+            x_resolution, y_resolution], dtype=np.float32)
 
         current_line = ''
 
         def _process_full_line(full_line):
-            # print(full_line)
             data = full_line.split(',')
             data_type = data[0]
             if data_type == "A":
@@ -206,7 +265,7 @@ class STM(object):
                 return True
             return False
 
-        while (True):
+        while True:
             read_number = self.stm_serial.inWaiting()
             if (read_number == 0):
                 continue
@@ -217,16 +276,17 @@ class STM(object):
                     if len(data_line) == 0:
                         continue
                     current_line += data_line
-                    if current_line[-1] == "\r":  # We have a full line
+                    if current_line and current_line[-1] == "\r":  # full line
                         _process_full_line(current_line)
                         current_line = ''
             else:
                 current_line += read_str
             # We have a full line
             if current_line and current_line[-1] == "\r":
-                _process_full_line(data_line)
+                _process_full_line(current_line)
                 current_line = ''
             if "D" in read_str:
                 break
         self.busy = False
         return
+#*** End of file: /home/ko/project/qt-panda/pc/stm_control_safe.py (created)
