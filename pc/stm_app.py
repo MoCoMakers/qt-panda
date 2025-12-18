@@ -6,6 +6,7 @@ import stm_control
 import time
 import csv
 import threading
+import platform
 
 
 from matplotlib.backends.backend_tkagg import (
@@ -13,6 +14,7 @@ from matplotlib.backends.backend_tkagg import (
 from matplotlib.figure import Figure
 from matplotlib import rcParams
 rcParams.update({'figure.autolayout': True})
+# Teensy port detection is provided by stm_control.find_teensy_port()
 
 
 def save_data_to_file(filename_prefix, data_to_store: list):
@@ -62,10 +64,50 @@ class PlotFrame(ttk.Frame):
         self.image = self.figure.add_subplot(
             111).imshow(image, interpolation='none', norm='linear', origin="lower")
 
+    def set_yscale(self, scale_type='linear', symlog_linthresh=1e-10):
+        """Set Y-axis scale to linear or symlog.
+        
+        Args:
+            scale_type: 'linear' or 'symlog'
+            symlog_linthresh: threshold for symlog scale (default 1e-10)
+        """
+        ax = self.figure.get_axes()[0]
+        if scale_type == 'symlog':
+            ax.set_yscale('symlog', linthresh=symlog_linthresh)
+        else:
+            ax.set_yscale('linear')
+        # Enable autoscaling on Y-axis after changing scale
+        ax.set_autoscaley_on(True)
+        ax.relim()
+        ax.autoscale_view()
+        self.canvas.draw()
+        self.canvas.flush_events()
+
+    def set_xaxis_range(self, x_min=None, x_max=None):
+        """Set X-axis range.
+        
+        Args:
+            x_min: minimum X value (None for auto)
+            x_max: maximum X value (None for auto)
+        """
+        ax = self.figure.get_axes()[0]
+        if x_min is not None and x_max is not None:
+            ax.set_xlim(x_min, x_max)
+            ax.set_autoscalex_on(False)
+        else:
+            ax.set_autoscalex_on(True)
+            ax.relim()
+        ax.autoscale_view()
+        self.canvas.draw()
+        self.canvas.flush_events()
+
     def update_plot(self, x_data, y_data):
         self.plot.set_xdata(x_data)
         self.plot.set_ydata(y_data)
         ax = self.figure.get_axes()[0]
+        # Ensure autoscaling is enabled for both axes
+        ax.set_autoscalex_on(True)
+        ax.set_autoscaley_on(True)
         ax.relim()
         ax.autoscale_view()
         # We need to draw *and* flush
@@ -96,7 +138,7 @@ class App(tk.Tk):
         # STM configs
         self.stm = stm_control.STM()
 
-        self.wm_title("Panda STM")
+        self.wm_title("QT-Panda STM")
         self.baseline_size = 500 # changed from 700
 
         self.image_frame = ttk.Frame(
@@ -110,6 +152,45 @@ class App(tk.Tk):
             label="current", xlabel='time(s)', ylabel='adc')
         self.real_time_current_plot_frame.grid(
             row=0, column=0, padx=10, pady=5)
+
+        # Add radio button controls for Y-scale selection (ADC plot)
+        self.adc_yscale_var = tk.StringVar(value='linear')
+        adc_scale_frame = ttk.LabelFrame(self.image_frame, text="ADC Y-Scale")
+        adc_scale_frame.grid(row=1, column=0, padx=10, pady=5, sticky=tk.W)
+        
+        linear_radio = ttk.Radiobutton(
+            adc_scale_frame, text="Linear", variable=self.adc_yscale_var, 
+            value='linear', command=lambda: self.real_time_current_plot_frame.set_yscale('linear'))
+        linear_radio.grid(row=0, column=0, padx=5, pady=2, sticky=tk.W)
+        
+        symlog_radio = ttk.Radiobutton(
+            adc_scale_frame, text="SymLog (±1e-10)", variable=self.adc_yscale_var, 
+            value='symlog', command=lambda: self.real_time_current_plot_frame.set_yscale('symlog', symlog_linthresh=1e-10))
+        symlog_radio.grid(row=0, column=1, padx=5, pady=2, sticky=tk.W)
+
+        # Add X-axis range controls for ADC plot
+        self.adc_xrange_var = tk.StringVar(value='all')
+        adc_xrange_frame = ttk.LabelFrame(self.image_frame, text="ADC X-Range")
+        adc_xrange_frame.grid(row=2, column=0, padx=10, pady=5, sticky=tk.W)
+        
+        all_radio = ttk.Radiobutton(
+            adc_xrange_frame, text="All", variable=self.adc_xrange_var,
+            value='all', command=lambda: self.real_time_current_plot_frame.set_xaxis_range(None, None))
+        all_radio.grid(row=0, column=0, padx=5, pady=2, sticky=tk.W)
+        
+        ttk.Label(adc_xrange_frame, text="Last (s):").grid(row=0, column=1, padx=5, pady=2, sticky=tk.W)
+        
+        self.adc_xrange_last_var = tk.StringVar(value="10")
+        xrange_entry = ttk.Entry(adc_xrange_frame, textvariable=self.adc_xrange_last_var, width=8)
+        xrange_entry.grid(row=0, column=2, padx=2, pady=2, sticky=tk.W)
+        
+        last_radio = ttk.Radiobutton(
+            adc_xrange_frame, text="Range", variable=self.adc_xrange_var,
+            value='last', command=self._update_adc_xrange)
+        last_radio.grid(row=0, column=3, padx=5, pady=2, sticky=tk.W)
+        
+        # Bind entry field to update range when text changes
+        xrange_entry.bind('<Return>', lambda e: self._update_adc_xrange())
 
         self.real_time_steps_plot_frame = PlotFrame(
             self.image_frame, dpi=100.0,  with_toobar=True, width=self.baseline_size, height=self.baseline_size)
@@ -253,10 +334,104 @@ class App(tk.Tk):
                     master=self, text="Scan", command=_set_values)
                 button.grid(row=2, column=0, sticky=tk.W)
 
-        open_frame = _ButtonWithEntry(button_frame,  "Open", [
-            "COM7"],  self.stm.open)
-        open_frame.grid(row=row_number, column=0, pady=5, sticky=tk.W)
-        row_number += 1
+        # Try to auto-detect Teensy port; fallback to empty string if not found
+        detected_port = stm_control.find_teensy_port()
+        open_default = detected_port if detected_port is not None else ""
+
+        # Status variable/label to show detection and open result. We do not
+        # auto-open the port; the user must press Open. The Open button will
+        # call `_open_cmd` which updates this label on success/failure.
+        try:
+            if detected_port:
+                detect_text = f"Teensy detected"
+                detect_fg = 'green'
+            else:
+                detect_text = "Teensy not detected"
+                detect_fg = 'red'
+        except Exception:
+            detect_text = "Teensy detection error"
+            detect_fg = 'red'
+
+        detect_var = tk.StringVar(value=detect_text)
+        detect_label = ttk.Label(button_frame, textvariable=detect_var, foreground=detect_fg)
+
+        def _open_cmd(port_str):
+            # Called by the Open button (from _ButtonWithEntry). Update label
+            # to reflect success/failure.
+            try:
+                port = port_str if port_str else None
+                if not port:
+                    detect_var.set("No port specified")
+                    detect_label.config(foreground='orange')
+                    return
+                self.stm.open(port)
+                detect_var.set(f"")
+                detect_label.config(foreground='green')
+            except Exception as e:
+                detect_var.set(f"Open failed: {e}")
+                detect_label.config(foreground='red')
+
+        open_frame = _ButtonWithEntry(button_frame, "Open", [open_default], _open_cmd)
+        open_frame.grid(row=row_number, column=0, pady=5, padx=0, sticky=tk.W)
+
+        # Move Scan control and detection label to the row below the Open
+        # control. Use `_ButtonWithEntry` for the Scan button to keep the
+        # control styling consistent.
+
+        def _scan_ports():
+            try:
+                port = stm_control.find_teensy_port()
+                if port:
+                    detect_var.set(f"Teensy detected, not opened")
+                    detect_label.config(foreground='green')
+                    # Update the Open entry's first input var if available
+                    try:
+                        var = open_frame.input_string_var_list[0]
+                        try:
+                            var.set(port)
+                        except Exception:
+                            try:
+                                var.initialize(port)
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+                else:
+                    detect_var.set("Teensy not detected")
+                    detect_label.config(foreground='red')
+            except Exception as e:
+                detect_var.set(f"Scan error: {e}")
+                detect_label.config(foreground='red')
+
+        scan_frame = _ButtonWithEntry(button_frame, "Scan Ports", [], _scan_ports, display_list=[detect_label])
+        scan_frame.grid(row=row_number+1, column=0, pady=0, padx=0, sticky=tk.W)
+
+        # place the detect label on the same new row on the right side
+        detect_label.grid(row=row_number+1, column=1, padx=8, sticky=tk.W)
+
+        # Make layout responsive: allow detection label to expand/wrap on narrow widths
+        try:
+            button_frame.columnconfigure(0, weight=0)
+            button_frame.columnconfigure(1, weight=0)
+            button_frame.columnconfigure(2, weight=1)
+        except Exception:
+            pass
+
+        def _update_wrap(event=None):
+            try:
+                # Give detect_label a wraplength so it wraps on narrow windows
+                total_w = button_frame.winfo_width() or 300
+                # reserve ~220px for the Open control + Scan button
+                wrap = max(80, total_w - 220)
+                detect_label.config(wraplength=wrap)
+            except Exception:
+                pass
+
+        # Update wrap initially and on resize
+        _update_wrap()
+        button_frame.bind('<Configure>', _update_wrap)
+
+        row_number += 2
 
         _stop_rest_clear = _MultipleButtons(button_frame, ["STOP", "Reset", "Clear"], [
                                             self.stm.stop, self.stm.reset, self.stm.clear])
@@ -406,7 +581,11 @@ class App(tk.Tk):
 
         self._update_real_time()
         # Default put the windows to be largest.
-        self.state('zoomed')
+        # Maximize window based on the operating system
+        if platform.system() == "windows":
+            self.state('zoomed')
+        else: # Assume Linux/maxOS for other cases
+            self.attributes('-zoomed', True)
 
     def _quit(self):
         self.quit()     # stops mainloop
@@ -415,6 +594,21 @@ class App(tk.Tk):
 
     def _reset(self):
         self.stm.reset()
+
+    def _update_adc_xrange(self):
+        """Update ADC plot X-axis range based on the selected mode."""
+        if self.adc_xrange_var.get() == 'all':
+            self.real_time_current_plot_frame.set_xaxis_range(None, None)
+        else:  # 'last'
+            try:
+                last_seconds = float(self.adc_xrange_last_var.get())
+                if last_seconds > 0:
+                    x_max = 0  # current time is always at 0 in our relative scaling
+                    x_min = -last_seconds
+                    self.real_time_current_plot_frame.set_xaxis_range(x_min, x_max)
+            except ValueError:
+                # Invalid input, ignore
+                pass
 
     def _update_real_time(self):
         if not self.stm.busy:
@@ -430,6 +624,10 @@ class App(tk.Tk):
 
             self.real_time_current_plot_frame.update_plot(plot_x, plot_adc)
             self.real_time_steps_plot_frame.update_plot(plot_x, plot_steps)
+            
+            # Apply X-axis range setting to ADC plot
+            if self.adc_xrange_var.get() == 'last':
+                self._update_adc_xrange()
         self.after(100, self._update_real_time)
 
     def _update_images(self):
