@@ -582,7 +582,7 @@ class App(tk.Tk):
         self._update_real_time()
         # Default put the windows to be largest.
         # Maximize window based on the operating system
-        if platform.system() == "windows":
+        if platform.system().lower() == "windows":
             self.state('zoomed')
         else: # Assume Linux/maxOS for other cases
             self.attributes('-zoomed', True)
