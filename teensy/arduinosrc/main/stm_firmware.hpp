@@ -185,6 +185,7 @@ public: // Access specifier
     }
     bool approach()
     {
+        int adc_val;
         if (stm_status.is_approaching)
         {
             // Reset Z to a recessed state:
@@ -199,7 +200,9 @@ public: // Access specifier
                     set_dac_z(z_value);
                     delayMicroseconds(100);
                     update();
-                    if (read_adc() > approach_config.target_dac)
+                    adc_val = read_adc();
+
+                    if ( adc_val > approach_config.target_dac || adc_val < -approach_config.target_dac)
                     {
                         Serial.println("Approached!");
                         Serial.println(stm_status.adc);
@@ -209,6 +212,12 @@ public: // Access specifier
                     }
                 }
                 // Reset Z to a recessed state:
+                for (int z_value = 50000; z_value > 10000; z_value = z_value - 100)
+                {
+                    set_dac_z(z_value);
+                    delayMicroseconds(100);
+                    update();
+                }
                 set_dac_z(10000);
                 delayMicroseconds(100);
             }
