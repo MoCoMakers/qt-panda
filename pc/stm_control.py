@@ -87,7 +87,6 @@ class STM(object):
 
     def open(self, device):
         self.stm_serial = serial.Serial(device, 115200, timeout=1)
-        self.stm_serial.set_buffer_size(rx_size=128000, tx_size=128000)
         self.is_opened = True
 
     def get_status(self):
@@ -229,4 +228,5 @@ class STM(object):
             if "D" in read_str:
                 break
         self.busy = False
+        print("Scan Complete")
         return

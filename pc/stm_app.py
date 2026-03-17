@@ -221,7 +221,7 @@ class App(tk.Tk):
                     button.grid(row=0, column=i)
 
         class _ScanControl(tk.Frame):
-            def __init__(self, parent, cmd_func, *args, **kwargs):
+            def __init__(self, parent, cmd_func,cmd_func2, *args, **kwargs):
                 super().__init__(parent, *args, **kwargs)
                 var_list = []
 
@@ -235,9 +235,12 @@ class App(tk.Tk):
                     return input_string_var
 
                 for row in range(2):
-                    start_var = _create_entry("31768", row, 0)
-                    end_var = _create_entry("33768", row, 1)
-                    interval_var = _create_entry("512", row, 2)
+                    #start_var = _create_entry("31768", row, 0)
+                    #end_var = _create_entry("33768", row, 1)
+                    #interval_var = _create_entry("512", row, 2)
+                    start_var = _create_entry("0", row, 0)
+                    end_var = _create_entry("65535", row, 1)
+                    interval_var = _create_entry("256", row, 2)
                     var_list += [start_var, end_var, interval_var]
                 sample_num_var = _create_entry("10", 2, 1)
                 var_list += [sample_num_var]
@@ -248,13 +251,30 @@ class App(tk.Tk):
                         target = int(var.get())
                         values.append(target)
                     cmd_func(*values)
+
+                def _set_values_multi():
+                    values = []
+                    for var in var_list:
+                        target = int(var.get())
+                        values.append(target)
+                    cmd_func2(*values)
+                    
                 # Control Button
                 button = ttk.Button(
                     master=self, text="Scan", command=_set_values)
                 button.grid(row=2, column=0, sticky=tk.W)
+                # Multi-scan Button
+                #button = ttk.Button(
+                #    master=self, text="Scan multiple", command=_set_values)
+                button = ttk.Button(
+                    master=self,
+                    text="Scan multiple",
+                    command=_set_values_multi
+                )
+                button.grid(row=3, column=0, sticky=tk.W)                
 
         open_frame = _ButtonWithEntry(button_frame,  "Open", [
-            "COM7"],  self.stm.open)
+            "/dev/ttyACM1"],  self.stm.open)
         open_frame.grid(row=row_number, column=0, pady=5, sticky=tk.W)
         row_number += 1
 
@@ -357,28 +377,33 @@ class App(tk.Tk):
                 target=self.stm.start_scan, args=arg)
             scan_thread.start()
             print("Updated")
+            
+        def _scan_multiple(*args):
+            def worker():
+                for i in range(20):
+                    print(f"Starting scan {i+1}/20")
+                    # start scan
+                    self.stm.start_scan(*args)
+                    # wait for scan to finish
+                    while self.stm.busy:
+                        time.sleep(0.5)
+                    print("Scan finished — saving image")
+                    # save screenshot/data
+                    self._save_scan_image("./images/image")
+                    time.sleep(1)
 
+                print("All scans complete")
+
+            threading.Thread(target=worker, daemon=True).start()
+         
         scan_button_frame = _ScanControl(
-            button_frame, _scan_and_plot)
+            button_frame, _scan_and_plot,_scan_multiple)
         scan_button_frame.grid(row=row_number, column=0, pady=5,
                                sticky=tk.W)
         row_number = row_number + 1
 
-        # Store the Scan Images to files
-        def _save_scan_image(image_path_prefix):
-            current_time_stamp = datetime.now()
-            # getting the timestamp
-            ts = int(datetime.timestamp(current_time_stamp)*1000)
-            np.savetxt(f"{image_path_prefix}_adc_{ts}.txt", self.stm.scan_adc)
-            np.savetxt(f"{image_path_prefix}_dacz_{ts}.txt",
-                       self.stm.scan_dacz)
-            self.scan_adc_frame.save_figure(
-                f"{image_path_prefix}_adc_{ts}.png")
-            self.scan_dacz_frame.save_figure(
-                f"{image_path_prefix}_dacz_{ts}.png")
-
         save_image_frame = _ButtonWithEntry(button_frame,  "Save", [
-            "./data/image"], _save_scan_image, entry_width=25)
+            "./images/image"], self._save_scan_image, entry_width=25)
         save_image_frame.grid(row=row_number, column=0, pady=5,
                               sticky=tk.W)
         row_number = row_number + 1
@@ -387,7 +412,8 @@ class App(tk.Tk):
         # Create text widget and specify size.
         cmd_text_box = tk.Text(button_frame, height=1, width=30)
         cmd_text_box.grid(row=row_number, column=0, pady=5)
-
+        
+           
         def _send_cmd():
             cmd = cmd_text_box.get("1.0", tk.END)
             self.stm.send_cmd(cmd)
@@ -406,7 +432,7 @@ class App(tk.Tk):
 
         self._update_real_time()
         # Default put the windows to be largest.
-        self.state('zoomed')
+        self.state('normal')
 
     def _quit(self):
         self.quit()     # stops mainloop
@@ -415,8 +441,21 @@ class App(tk.Tk):
 
     def _reset(self):
         self.stm.reset()
-
-    def _update_real_time(self):
+        # Store the Scan Images to files
+        
+    
+        
+    def _save_scan_image(self,image_path_prefix):
+        current_time_stamp = datetime.now()
+        # getting the timestamp
+        ts = int(datetime.timestamp(current_time_stamp)*1000)
+        np.savetxt(f"{image_path_prefix}_adc_{ts}.txt", self.stm.scan_adc)
+        #np.savetxt(f"{image_path_prefix}_dacz_{ts}.txt",   self.stm.scan_dacz)
+        self.scan_adc_frame.save_figure(f"{image_path_prefix}_adc_{ts}.png")
+       # self.scan_dacz_frame.save_figure(
+       #     f"{image_path_prefix}_dacz_{ts}.png")
+            
+    def _update_real_time_old(self):
         if not self.stm.busy:
             status = self.stm.get_status()
             plot_x = [hist.time_millis for hist in self.stm.history]
@@ -431,7 +470,32 @@ class App(tk.Tk):
             self.real_time_current_plot_frame.update_plot(plot_x, plot_adc)
             self.real_time_steps_plot_frame.update_plot(plot_x, plot_steps)
         self.after(100, self._update_real_time)
+        
+    def _update_real_time(self):
+        if not self.stm.busy:
+            status = self.stm.get_status()
+            self.status_label.config(text=status.to_string())
 
+            # Get latest timestamp
+            plot_x = [hist.time_millis for hist in self.stm.history]
+            if not plot_x:
+                self.after(100, self._update_real_time)
+                return
+
+            max_time = max(plot_x)
+            cutoff = max_time - 60000  # last 60 seconds
+
+            # Filter history to last 60 seconds
+            recent_history = [h for h in self.stm.history if h.time_millis >= cutoff]
+
+            plot_x = [(h.time_millis - max_time) / 1000.0 for h in recent_history]  # seconds
+            plot_adc = [stm_control.STM_Status.adc_to_amp(h.adc) for h in recent_history]
+            plot_steps = [h.steps for h in recent_history]
+
+            self.real_time_current_plot_frame.update_plot(plot_x, plot_adc)
+            self.real_time_steps_plot_frame.update_plot(plot_x, plot_steps)
+        self.after(100, self._update_real_time)
+        
     def _update_images(self):
         x_start, x_end, x_resolution, y_start, y_end, y_resolution = self.stm.scan_config
         self.scan_adc_frame.update_image(self.stm.scan_adc, extend=[
