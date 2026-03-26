@@ -38,7 +38,7 @@ void EfficientStepper::enable()
     }
 
     _stepper_motor_enabled = true;
-}
+}  
 
 void EfficientStepper::disable()
 {

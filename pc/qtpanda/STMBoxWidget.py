@@ -171,3 +171,8 @@ class STMBoxWidget(QtWidgets.QLabel):
         self.boxChanged.emit(self.box)
 
         self.update()
+
+    def SetValues(self,new_x,new_y,new_w,new_h):
+        self.box = (new_x, new_y, new_w, new_h)
+        self.boxChanged.emit(self.box)
+        self.update()

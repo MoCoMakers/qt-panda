@@ -472,7 +472,7 @@ public: // Access specifier
             delayMicroseconds(500);
         }
     }
-    STMStatus stm_status = STMStatus();
+    STMStatus stm_status = STMStatus(); 
 
 private:
     // DAC Settings

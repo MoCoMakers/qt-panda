@@ -99,7 +99,7 @@ void serialCommand(String command, STM &stm)
     }
     if (command == "SCST")
     {
-      int x_start = Serial.parseInt();
+      int x_start = Serial.parseInt(); 
       int x_end = Serial.parseInt();
       int x_resolution = Serial.parseInt();
       int y_start = Serial.parseInt();

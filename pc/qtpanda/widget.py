@@ -1,6 +1,22 @@
 # This Python file uses the following encoding: utf-8
+
+
 import sys
-import plotFrame
+from PySide6 import QtCore, QtGui
+
+# MUST be before QApplication AND before any Qt widgets import
+QtCore.QCoreApplication.setAttribute(QtCore.Qt.AA_UseDesktopOpenGL)
+
+fmt = QtGui.QSurfaceFormat()
+fmt.setVersion(2, 1)
+fmt.setProfile(QtGui.QSurfaceFormat.CompatibilityProfile)
+fmt.setDepthBufferSize(24)
+QtGui.QSurfaceFormat.setDefaultFormat(fmt)
+
+from PySide6.QtWidgets import QApplication
+from PySide6 import QtWidgets, QtCore, QtGui
+
+import plotframe
 from datetime import datetime
 import numpy as np
 import stm_control
@@ -9,6 +25,7 @@ import csv
 import threading
 import pyqtgraph as pg
 import STMBoxWidget
+import GridSpectroWorker
 from PySide6.QtCore import Slot, QTimer
 from PySide6.QtWidgets import (QApplication,  QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QSizePolicy,
@@ -21,9 +38,16 @@ from qt_log_handler import QtLogHandler
 import tifffile
 import gwyfile
 from gwyfile.objects import GwyContainer
+from PySide6.QtCore import QObject, QThread, Signal
+from PySide6 import QtCore
+from PySide6 import QtWidgets, QtCore, QtGui
 
+from PySide6.QtOpenGLWidgets import QOpenGLWidget
+print("OpenGL widget import OK")
 
 os.makedirs("./images", exist_ok=True)
+print("Profile:",
+      QtGui.QSurfaceFormat.defaultFormat().profile())
 
 class Widget(QWidget):
 
@@ -41,36 +65,64 @@ class Widget(QWidget):
         # ----------------------
         # Setup Plots
         # ----------------------
-
-        self.pltCurrent = plotFrame.PlotFrame()
+        self.pltCurrent = plotframe.PlotFrame()
         layout = QVBoxLayout(self.ui.pltCurrent)
         layout.setContentsMargins(0,0,0,0)
         layout.addWidget(self.pltCurrent)
 
-        self.pltSteps = plotFrame.PlotFrame()
+        self.pltSteps = plotframe.PlotFrame()
         layout1 = QVBoxLayout(self.ui.pltSteps)
         layout1.setContentsMargins(0,0,0,0)
         layout1.addWidget(self.pltSteps)
 
-        self.pltIV = plotFrame.PlotFrame()
+        self.pltIV = plotframe.PlotFrame()
         layout2 = QVBoxLayout(self.ui.pltIV)
         layout2.setContentsMargins(0,0,0,0)
         layout2.addWidget(self.pltIV)
 
-        self.pltDAC = plotFrame.PlotFrame()
+        self.pltdIdV = plotframe.PlotFrame()
+        layout6 = QVBoxLayout(self.ui.pltdIdV)
+        layout6.setContentsMargins(0,0,0,0)
+        layout6.addWidget(self.pltdIdV)
+
+        self.pltDAC = plotframe.PlotFrame()
         layout3 = QVBoxLayout(self.ui.pltDAC)
         layout3.setContentsMargins(0,0,0,0)
         layout3.addWidget(self.pltDAC)
 
-        self.pltVals = plotFrame.PlotFrame()
+        self.pltVals = plotframe.PlotFrame()
         layout4 = QVBoxLayout(self.ui.pltVals)
         layout4.setContentsMargins(0,0,0,0)
         layout4.addWidget(self.pltVals)
 
+        self.pltdIdZ = plotframe.PlotFrame()
+        layout5 = QVBoxLayout(self.ui.pltdIdZ)
+        layout5.setContentsMargins(0,0,0,0)
+        layout5.addWidget(self.pltdIdZ)
+
+        self.pltGridImage = plotframe.PlotFrame()
+        layout7 = QVBoxLayout(self.ui.pltGridImage)
+        layout7.setContentsMargins(0,0,0,0)
+        layout7.addWidget(self.pltGridImage)
+
+        self.pltGridChart = plotframe.PlotFrame()
+        layout8 = QVBoxLayout(self.ui.pltGridChart)
+        layout8.setContentsMargins(0,0,0,0)
+        layout8.addWidget(self.pltGridChart)
+
+        self.pltNoise = plotframe.PlotFrame()
+        layout9 = QVBoxLayout(self.ui.pltNoise)
+        layout9.setContentsMargins(0,0,0,0)
+        layout9.addWidget(self.pltNoise)
+
+
+
         # initialize scan images
         init_img = np.random.rand(10, 10)
-        self.pltDAC.add_image(init_img)
-        self.pltVals.add_image(init_img)
+        self.pltDAC.add_image(init_img,label = "DAC Values")
+        self.pltVals.add_image(init_img,label = "ADC Values")
+        self.pltNoise.add_image(init_img,label = "Noise Values")
+        self.pltGridImage.add_image(init_img, label="dI/dV & dI/dZ")
 
         # Create pens
         red_pen = pg.mkPen("r", width=3)
@@ -81,6 +133,12 @@ class Widget(QWidget):
         self.pltCurrent.add_plot("Current", "time(s)", "amp", pen=red_pen)
         self.pltSteps.add_plot("Steps", "time(s)", "steps", pen=green_pen)
         self.pltIV.add_plot("IV Curve", "Bias", "Current", pen=blue_pen)
+        self.pltdIdV.add_plot("dIdV Curve", "Bias", "Current", pen=green_pen)
+        self.pltdIdZ.add_plot("dIdZ Curve", "Z", "Current", pen=blue_pen)
+        self.pltGridChart.add_plot("dIdV dIdZ ", "Bias", "Current", pen=blue_pen)
+
+
+        #self.pltVals.add_surface3d()
 
         self.wgtscanctl = STMBoxWidget.STMBoxWidget()
         layout5 = QVBoxLayout(self.ui.wgtscanctl)
@@ -89,6 +147,8 @@ class Widget(QWidget):
 
         self.wgtscanctl.boxChanged.connect(self.on_scan_box_changed)
         self.wgtscanctl.show()
+
+        #self.ui.pltVals3d.setVisible(False);
 
         # ----------------------
         # Timer Updates
@@ -115,10 +175,12 @@ class Widget(QWidget):
         logging.getLogger("stm").addHandler(self.qt_log_handler)
         self.qt_log_handler.log_signal.connect(self.append_log)
 
+
+    # ----------------------
+    # Custom Box control
+    # ----------------------
     def on_scan_box_changed(self, box):
-
         x, y, w, h = box
-
         x_start = x
         x_end = x + w
         y_start = y
@@ -143,11 +205,168 @@ class Widget(QWidget):
             w.blockSignals(False)
 
 
+    @Slot() #need to hook up these line edit boxes to change the values of the stmBoxWidget
+    def on_leXStart_editingFinished(self):
+        self.UpdateBoxFromText()
 
+    @Slot()
+    def on_leYStart_editingFinished(self):
+        self.UpdateBoxFromText()
 
+    @Slot()
+    def on_leXEnd_editingFinished(self):
+        self.UpdateBoxFromText()
+
+    @Slot()
+    def on_leYEnd_editingFinished(self):
+        self.UpdateBoxFromText()
+
+    def UpdateBoxFromText(self):
+        x = int(self.ui.leXStart.text())
+        y = int(self.ui.leYStart.text())
+        w = int(self.ui.leXEnd.text()) - x
+        h = int(self.ui.leYEnd.text()) -y
+        self.wgtscanctl.SetValues(x,y,w,h)
     # ----------------------
     # Button Handlers
     # ----------------------
+
+    @Slot()
+    def on_cmdNoiseScan_clicked(self):
+        xres = self.ui.spnNoiseX.value()
+        yres = self.ui.spnNoiseY.value()
+        samples = self.ui.spnNoiseSamples.value()
+        uS = self.ui.spnNoiseDelay.value()
+        #self.stm.start_noise_scan(xres,yres,samples,uS)
+        threading.Thread(
+            target=self.stm.start_noise_scan,
+            args=(xres,yres,samples,uS),
+            daemon=True
+        ).start()
+
+    @Slot()
+    def on_cmdSettle_clicked(self):
+        xsettle = self.ui.spnXSettle.value()
+        ysettle = self.ui.spnYSettle.value()
+        zsettle = self.ui.spnZSettle.value()
+        biassettle = self.ui.spnBiasSettle.value()
+        print("[CMD] SETL")
+        print(f"  X: {xsettle}")
+        print(f"  Y: {ysettle}")
+        print(f"  Z: {zsettle}")
+        print(f"  Bias: {biassettle}")
+        self.stm.set_settle(xsettle,ysettle,zsettle,biassettle)
+
+
+    @Slot()
+    def on_cmdGridSpectro_clicked(self):
+
+        xs = int(self.ui.leXStart.text())
+        ys = int(self.ui.leYStart.text())
+        xe = int(self.ui.leXEnd.text())
+        ye = int(self.ui.leYEnd.text())
+        xr = int(self.ui.leXRes.text())
+        yr = int(self.ui.leYRes.text())
+
+        bias_start = int(self.ui.leGridBiasStart.text())
+        bias_end = int(self.ui.leGridBiasEnd.text())
+        bias_points = int(self.ui.leGridBiasPoints.text())
+
+        mode = self.ui.cmbGridSpectChoice.currentIndex()
+
+        print("[CMD] GRID SPECTRO")
+        print(f"  X: {xs}->{xe}  res={xr}")
+        print(f"  Y: {ys}->{ye}  res={yr}")
+        print(f"  Bias: {bias_start}->{bias_end}  points={bias_points}")
+        print(f"  Mode: {mode}")
+
+        params = (
+            xs, xe, xr,
+            ys, ye, yr,
+            bias_start, bias_end,
+            bias_points,
+            mode
+        )
+
+        self.thread = QThread()
+        self.worker = GridSpectroWorker.GridSpectroWorker(self.stm, params)
+        self.worker.moveToThread(self.thread)
+        self.thread.started.connect(self.worker.run)
+        self.worker.progress.connect(self._update_progress)
+        self.worker.finished.connect(self._grid_finished)
+        self.worker.finished.connect(self.thread.quit)
+        self.worker.finished.connect(self.worker.deleteLater)
+        self.thread.finished.connect(self.thread.deleteLater)
+        self.thread.start()
+
+    def _update_progress(self, value):
+        self.ui.progressBar.setValue(value)
+
+    def _grid_finished(self, grid):
+
+        self.grid_cube = grid
+        print("Scan complete")
+        if self.grid_cube is None:
+            print("No grid data returned")
+            return
+        # Expect shape (xr, yr, bias_points)
+        print("Grid shape:", self.grid_cube.shape)
+        # --------------------------------------------------
+        # Configure slider
+        # --------------------------------------------------
+        bias_points = int(self.ui.leGridBiasPoints.text())
+        self.ui.sldGridBias.setMinimum(0)
+        self.ui.sldGridBias.setMaximum(bias_points - 1)
+        self.ui.sldGridBias.setValue(0)
+
+        # Display first slice
+        self.pltGridImage.update_image(grid[:, :, 0].T)#, autoLevels=True)
+        # --------------------------------------------------
+        # Connect slider (only connect once ideally)
+        # --------------------------------------------------
+        try:
+            self.ui.sldGridBias.valueChanged.disconnect()
+        except:
+            pass
+
+        self.ui.sldGridBias.valueChanged.connect(self._update_grid_slice)
+
+        # --------------------------------------------------
+        # Connect click on image
+        # --------------------------------------------------
+        try:
+            self.pltGridImage.graphics.scene().sigMouseClicked.disconnect()
+        except:
+            pass
+
+        self.pltGridImage.graphics.scene().sigMouseClicked.connect(self._grid_image_clicked)
+
+    #helper function for the 3d slice of data
+    def _update_grid_slice(self, bias_index):
+        if self.grid_cube is None:
+            return
+        slice2d = self.grid_cube[:, :, bias_index]
+        # Transpose for display (pyqtgraph uses row-major)
+        self.pltGridImage.update_image(slice2d.T)#, autoLevels=False)
+
+
+    def _grid_image_clicked(self, event):
+        pos = event.scenePos()
+        if not self.pltGridImage.sceneBoundingRect().contains(pos):
+            return
+        mouse_point = self.pltGridImage.getView().mapSceneToView(pos)
+        x = int(mouse_point.x())
+        y = int(mouse_point.y())
+        if (x < 0 or y < 0 or
+            x >= self.grid_cube.shape[0] or
+            y >= self.grid_cube.shape[1]):
+            return
+
+        # Extract spectrum at selected pixel
+        spectrum = self.grid_cube[x, y, :]
+        bias_axis = np.arange(self.grid_cube.shape[2])
+        self.pltGridChart.clear()
+        self.pltGridChart.plot(bias_axis, spectrum)
 
     @Slot()
     def on_cmdOpen_clicked(self):
@@ -223,27 +442,32 @@ class Widget(QWidget):
 
         targetdac = int(self.ui.leTargetDAC.text() or 0)
         steps = int(self.ui.leSteps.text())
-
         print(f"[CMD] APPROACH  steps={steps}  targetdac={targetdac}")
-
         self.stm.approach(targetdac,steps)
 
+    @Slot(bool)
+    def on_chkConstCurrent_toggled(self, checked):
+        if checked:
+            # It's safer to get the value directly from the UI here
+            try:
+                target = int(self.ui.leCCVal.text())
+                print(f"[CMD] CONST_CURRENT_ON target_adc={target}")
+                self.stm.turn_on_const_current(target)
+            except ValueError:
+                print("Error: Invalid target value in leCCVal")
+        else:
+            print("[CMD] CONST_CURRENT_OFF")
+            self.stm.turn_off_const_current()
 
     @Slot()
     def on_cmdCCOn_clicked(self):
-
         target = int(self.ui.leCCVal.text())
-
         print(f"[CMD] CONST_CURRENT_ON  target_adc={target}")
-
         self.stm.turn_on_const_current(target)
-
 
     @Slot()
     def on_cmdCCOff_clicked(self):
-
         print("[CMD] CONST_CURRENT_OFF")
-
         self.stm.turn_off_const_current()
 
 
@@ -262,6 +486,11 @@ class Widget(QWidget):
         amount = self.ui.spnMot.value()
         print(f"MTMV {amount}")
         self.stm.send_cmd(f"MTMV -{amount}")
+
+    @Slot()
+    def on_cmdMotOff_clicked(self):
+        print(f"MTOF") # MOTOR OFF
+        self.stm.send_cmd(f"MTOF")
 
     # ----------------------
     # SCAN
@@ -298,17 +527,13 @@ class Widget(QWidget):
 
     @Slot()
     def on_cmdScanMulti_clicked(self):
-
         count = int(self.ui.leMultiScanTimes.text())
-
         x_start = int(self.ui.leXStart.text())
         x_end = int(self.ui.leXEnd.text())
         x_res = int(self.ui.leXRes.text())
-
         y_start = int(self.ui.leYStart.text())
         y_end = int(self.ui.leYEnd.text())
         y_res = int(self.ui.leYRes.text())
-
         samples = int(self.ui.leSamples.text())
 
         print("[CMD] MULTI_SCAN")
@@ -317,30 +542,22 @@ class Widget(QWidget):
         print(f"      Y: start={y_start} end={y_end} res={y_res}")
         print(f"      samples={samples}")
 
-        def worker():
-
+        def worker(): #local thread worker function
             print("[THREAD] Multi-scan worker started")
-
             for i in range(count):
-
                 print(f"[SCAN] Starting scan {i+1}/{count}")
-
                 self.stm.start_scan(
                     x_start, x_end, x_res,
                     y_start, y_end, y_res,
                     samples
                 )
-
                 while self.stm.busy:
                     print("[SCAN] Waiting for scan to finish...")
                     time.sleep(0.5)
 
                 print("[SCAN] Scan finished — saving image")
-
                 self.save_scan_image(self.ui.leSave.text())
-
                 time.sleep(1)
-
             print("[SCAN] All scans complete")
 
         threading.Thread(target=worker, daemon=True).start()
@@ -350,49 +567,77 @@ class Widget(QWidget):
     def append_log(self, message):
         self.ui.txtLog.append(message)
 
-
     @Slot(str)
     def on_cmbColorPal_currentTextChanged(self,text):
-        print(f"Auto-connected! Text is: {text}")
-        #self.stm.scan_adc
         self.pltVals.set_colormap(text)
+
+    @Slot(str)
+    def on_cmbGridColorPal_currentTextChanged(self,text):
+        self.pltGridImage.set_colormap(text)
+
+    @Slot(str)
+    def on_cmbMotDir_currentTextChanged(self,text):
+        idx = self.ui.cmbMotDir.currentIndex()
+        dir = 1 # assume forward
+        if(idx == 0):
+            dir = 1
+        else :
+            dir = -1
+        print(f"[Motor Direction] {text} : {dir}")
+        self.stm.send_cmd(f"MTDR {dir}")
 
 
     # ----------------------
     # IV CURVE
     # ----------------------
-
     @Slot()
     def on_cmdScanIV_clicked(self):
 
         start = int(self.ui.leIVStart.text())
-        end = int(self.ui.leIVEnd.text())
-        step = int(self.ui.leIVStep.text())
+        end   = int(self.ui.leIVEnd.text())
+        step  = int(self.ui.leIVStep.text())
 
         print("[CMD] IV_SCAN")
-        print(f"      IV Start ={start}")
-        print(f"      IV End ={end}")
-        print(f"      IV Step ={step}")
+        print(f"      IV Start = {start}")
+        print(f"      IV End   = {end}")
+        print(f"      IV Step  = {step}")
 
-        iv_values = self.stm.measure_iv_curve(start, end, step)
+        # New hybrid return
+        bias_adc, current_adc, didv_adc = self.stm.measure_iv_curve(start, end, step)
 
-        x_value = iv_values[::2]
-        y_value = iv_values[1::2]
+        if bias_adc is None or len(bias_adc) == 0:
+            print("[IV] No data received")
+            return
+
+        # Convert units
+        bias = [
+            stm_control.STM_Status.dac_to_bias_volts(dac)
+            for dac in bias_adc
+        ]
 
         current = [
             stm_control.STM_Status.adc_to_amp(adc)
-            for adc in y_value
+            for adc in current_adc
         ]
 
-        bias = [
-            stm_control.STM_Status.dac_to_bias_volts(dac)
-            for dac in x_value
-        ]
+        # Optional: convert dIdV to physical units
+        # If your derivative is ADC-per-DAC, convert to A/V:
+        didv = []
 
-        print(f"[IV] points_collected={len(bias)}")
+        for i in range(len(didv_adc)):
+            # Convert derivative properly:
+            # (dI/dV) = (adc_to_amp(delta_adc)) / (dac_to_bias_volts(delta_dac))
+            # If firmware already divided by DAC step:
+            amp = stm_control.STM_Status.adc_to_amp(didv_adc[i])
+            didv.append(amp)
 
+        print(f"[IV] points_collected = {len(bias)}")
+
+        # Plot IV
         self.pltIV.update_plot(bias, current)
 
+        # Plot dI/dV
+        self.pltdIdV.update_plot(bias, didv)
 
     @Slot()
     def on_cmdSaveIV_clicked(self):
@@ -411,7 +656,40 @@ class Widget(QWidget):
         self.save_iv_ascii(prefix, x_value, y_value)
 
 
+    # ----------------------
+    # dIdZ CURVE
+    # ----------------------
 
+    @Slot()
+    def on_cmdScandIdZ_clicked(self):
+
+        start = int(self.ui.ledIdZStart.text())
+        end = int(self.ui.ledIdZEnd.text())
+        step = int(self.ui.ledIdZStep.text())
+
+        print("[CMD] dIdZ_SCAN")
+        print(f"      dIdZ Start ={start}")
+        print(f"      dIdZ End ={end}")
+        print(f"      dIdZ Step ={step}")
+
+        dIdZ_values = self.stm.measure_dIdZ_curve(start, end, step)
+
+        x_value = dIdZ_values[::2]
+        y_value = dIdZ_values[1::2]
+
+        current = [
+            stm_control.STM_Status.adc_to_amp(adc)
+            for adc in y_value
+        ]
+
+        bias = [
+            stm_control.STM_Status.dac_to_bias_volts(dac)
+            for dac in x_value
+        ]
+
+        print(f"[dIdZ] points_collected={len(bias)}")
+
+        self.pltdIdZ.update_plot(bias, current)
     # ----------------------
     # Send Raw Command
     # ----------------------
@@ -524,12 +802,17 @@ class Widget(QWidget):
         x_start, x_end, x_res, y_start, y_end, y_res = self.stm.scan_config
 
         self.pltVals.update_image(
-            self.stm.scan_adc,
+            self.stm.scan_adc.T,
+            extent=[y_start, y_end, x_start, x_end]
+        )
+
+        self.pltNoise.update_image(
+            self.stm.scan_noise,
             extent=[y_start, y_end, x_start, x_end]
         )
 
         self.pltDAC.update_image(
-            self.stm.scan_dacz,
+            self.stm.scan_dacz.T,
             extent=[y_start, y_end, x_start, x_end]
         )
     #---------------------------
@@ -645,6 +928,7 @@ class Widget(QWidget):
 
 
 if __name__ == "__main__":
+
     app = QApplication(sys.argv)
     widget = Widget()
     widget.show()
