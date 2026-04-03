@@ -13,9 +13,6 @@ fmt.setProfile(QtGui.QSurfaceFormat.CompatibilityProfile)
 fmt.setDepthBufferSize(24)
 QtGui.QSurfaceFormat.setDefaultFormat(fmt)
 
-from PySide6.QtWidgets import QApplication
-from PySide6 import QtWidgets, QtCore, QtGui
-
 import plotframe
 from datetime import datetime
 import numpy as np
@@ -27,22 +24,14 @@ import pyqtgraph as pg
 import STMBoxWidget
 import GridSpectroWorker
 from PySide6.QtCore import Slot, QTimer
-from PySide6.QtWidgets import (QApplication,  QHBoxLayout,
-    QLabel, QLineEdit, QPushButton, QSizePolicy,
-    QSpacerItem, QSpinBox, QTabWidget, QVBoxLayout,
-    QWidget)
+from PySide6.QtWidgets import (QApplication,QVBoxLayout,QWidget)
 from ui_form import Ui_Widget
 import os
 import logging
 from qt_log_handler import QtLogHandler
 import tifffile
-import gwyfile
-from gwyfile.objects import GwyContainer
-from PySide6.QtCore import QObject, QThread, Signal
-from PySide6 import QtCore
-from PySide6 import QtWidgets, QtCore, QtGui
+from PySide6.QtCore import  QThread
 
-from PySide6.QtOpenGLWidgets import QOpenGLWidget
 print("OpenGL widget import OK")
 
 os.makedirs("./images", exist_ok=True)
@@ -458,18 +447,6 @@ class Widget(QWidget):
         else:
             print("[CMD] CONST_CURRENT_OFF")
             self.stm.turn_off_const_current()
-
-    @Slot()
-    def on_cmdCCOn_clicked(self):
-        target = int(self.ui.leCCVal.text())
-        print(f"[CMD] CONST_CURRENT_ON  target_adc={target}")
-        self.stm.turn_on_const_current(target)
-
-    @Slot()
-    def on_cmdCCOff_clicked(self):
-        print("[CMD] CONST_CURRENT_OFF")
-        self.stm.turn_off_const_current()
-
 
     # ----------------------
     # MOTOR MOVEMENT
