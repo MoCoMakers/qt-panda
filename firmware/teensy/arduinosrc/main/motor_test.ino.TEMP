@@ -1,0 +1,91 @@
+/**************************************************************************/
+/*
+  Stepper Motor Continuous Rotation Test
+  
+  This test program rotates the stepper motor continuously at a specified rate.
+  Useful for testing motor functionality and ULN2003 driver board connections.
+  
+  Hardware:
+  - Teensy 4.1
+  - ULN2003 Stepper Motor Driver Board
+  - 5V Stepper Motor (4096 steps per revolution)
+  
+  Pin Connections:
+  - IN1 -> Pin 33
+  - IN2 -> Pin 34
+  - IN3 -> Pin 35
+  - IN4 -> Pin 36
+*/
+/**************************************************************************/
+
+#include <Stepper.h>
+
+// Motor pin definitions (matching stm_firmware.hpp)
+#define IN1 33
+#define IN2 34
+#define IN3 35
+#define IN4 36
+#define STEPS_PER_REVOLUTION 4096
+
+// Motor speed in RPM (revolutions per minute)
+// Adjust this value to change rotation speed
+// Lower values = slower rotation, Higher values = faster rotation
+// Recommended range: 1-10 RPM for testing
+#define MOTOR_SPEED_RPM 2
+
+// Number of steps per cycle (for continuous rotation)
+// Positive = forward, Negative = backward
+#define STEPS_PER_CYCLE 4096  // One full revolution
+
+// Create stepper motor instance
+// Note: Pin order is IN1, IN3, IN2, IN4 (matching stm_firmware.hpp line 121)
+Stepper stepper(STEPS_PER_REVOLUTION, IN1, IN3, IN2, IN4);
+
+void setup() {
+  // Initialize serial communication
+  Serial.begin(115200);
+  
+  // Wait for serial port to connect (useful for USB serial)
+  while (!Serial && millis() < 3000) {
+    delay(10);
+  }
+  
+  Serial.println("Stepper Motor Test - Continuous Rotation");
+  Serial.println("========================================");
+  Serial.print("Steps per revolution: ");
+  Serial.println(STEPS_PER_REVOLUTION);
+  Serial.print("Motor speed: ");
+  Serial.print(MOTOR_SPEED_RPM);
+  Serial.println(" RPM");
+  Serial.print("Steps per cycle: ");
+  Serial.println(STEPS_PER_CYCLE);
+  Serial.println("Starting continuous rotation...");
+  Serial.println();
+  
+  // Set the motor speed
+  stepper.setSpeed(MOTOR_SPEED_RPM);
+  
+  // Small delay before starting
+  delay(500);
+}
+
+void loop() {
+  // Rotate motor continuously
+  // This will rotate one full revolution (4096 steps) at the set speed
+  stepper.step(STEPS_PER_CYCLE);
+  
+  // Optional: Print status every revolution
+  static unsigned long lastPrint = 0;
+  unsigned long now = millis();
+  if (now - lastPrint > 1000) {  // Print every second
+    Serial.print("Rotating... Time: ");
+    Serial.print(now / 1000);
+    Serial.println(" seconds");
+    lastPrint = now;
+  }
+  
+  // Small delay between cycles (optional, can be removed for continuous rotation)
+  // delay(10);
+}
+
+
