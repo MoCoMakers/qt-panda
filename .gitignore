@@ -1,1 +1,12 @@
 __pycache__/
+/software/pc/qtpanda/images/*.tiff
+/software/pc/qtpanda/images/*.gsf
+/software/pc/qtpanda/images/*.csv
+/software/pc/qtpanda/images/*.txt
+/software/pc/qtpanda/images/*.gif
+/software/pc/qtpanda/images/*.png
+/software/pc/qtpanda/images/processed/*.*
+/software/pc/red_panda/images/*.*
+/software/pc/red_panda/images/processed/*.png
+/software/pc/red_panda/images/processed/*.txt
+/software/pc/red_panda/images/processed/stm_captured_data.zip
