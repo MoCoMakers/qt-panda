@@ -1,3 +1,7 @@
 __pycache__/
 images/
 .claude/
+
+reference/
+documentation/docs-for-ai/
+scripts/
