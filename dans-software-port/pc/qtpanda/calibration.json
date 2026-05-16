@@ -1,0 +1,12 @@
+{
+  "dac_x_v_per_lsb": 0.0001525878906,
+  "dac_y_v_per_lsb": 0.0001525878906,
+  "dac_z_v_per_lsb": 0.000305175781,
+  "dac_bias_v_per_lsb": 0.0001525878906,
+  "piezo_x_nm_per_v": 5.0,
+  "piezo_y_nm_per_v": 5.0,
+  "piezo_z_nm_per_v": 3.0,
+  "adc_v_per_lsb": 0.0003125,
+  "preamp_a_per_v": 1e-08,
+  "preamp_v_per_a": 100000000.0
+}

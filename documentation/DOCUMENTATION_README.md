@@ -111,6 +111,38 @@ The 100M ohm Ohmite resistor is suspended above the board...
 5. **Master files are authoritative** - Published docs (ALL CAPS) are the source of truth
 6. **Reference files are working docs** - Keep raw notes in `references/` for context
 
+## AI / External Reference Docs (`docs-for-ai/`)
+
+The `documentation/docs-for-ai/` folder holds reference material for AI-assisted workflows and external tools:
+
+- **Gwyddion**: Text extracted from the [Gwyddion user guide](https://gwyddion.net/documentation/user-guide-en/) for STM/AFM image post-processing (levelling, filters, scan-line correction, masks, export). See `docs-for-ai/Gwyddion/README.md` for the index.
+
+## Internal-only working folders (`reference/`, `scripts/`)
+
+The repository is public, but the project's working knowledge base lives in a **private team Google Drive**. To keep that material out of the public repo, two top-level folders are gitignored:
+
+- `reference/` — local mirror of external reference material (Drive exports, third-party design files, Dan Berard's STM_Controller, etc.). Treat this as a scratch checkout; nothing here is canonical and nothing here is shipped.
+- `scripts/` — small utilities used to (re)populate `reference/` from internal sources. Also gitignored because the scripts may embed Drive folder IDs or other internal identifiers.
+
+### Keeping reference material up to date
+
+When the team Drive changes (new circuit-diagram meeting notes, an updated `.epro` schematic, a new revision of the software change doc) you can refresh the local mirror by running the relevant script in `scripts/`. The current refresher is:
+
+- `scripts/download_qtpanda_drive_archive.py` — pulls only the `Documentation/` and `Design Files/` subtrees of the QT Panda Drive archive into `reference/QTPanda_Drive_Archive/`. Auto-installs `gdown` if missing. Folder IDs are hard-coded near the top of the script.
+
+Typical workflow:
+
+1. Get access to the team Drive (ask a maintainer — the archive is **internal, not public-domain**).
+2. Run the refresher: `python scripts/download_qtpanda_drive_archive.py`
+3. Use the refreshed files locally. Do **not** stage or commit anything under `reference/` or `scripts/` — the `.gitignore` is the safety net, not the policy.
+4. If a piece of reference material needs to become canonical / public, copy it (or extract its facts) into a published doc under `documentation/` rather than promoting the working file itself.
+
+### Public-repo / private-source boundary
+
+- ✅ Anything under `documentation/` (master docs, `docs-for-ai/`, figures we own or whose licenses permit) ships publicly.
+- ✅ Anything under `pc/`, `teensy/`, `design/` ships publicly.
+- ❌ Anything under `reference/` or `scripts/` is treated as internal. If you find yourself wanting to share a file from there, first confirm its licensing/permission and then move the public-safe content into `documentation/` with an explicit attribution line.
+
 ## Notes
 
 - Master documentation files serve as the published, polished versions

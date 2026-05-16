@@ -1,0 +1,12 @@
+# Transient development harness — must never ship in the public repo.
+# See emulator/README.md. The real software imports it lazily and only
+# when the serial device name is "EMU", so excluding it is safe.
+emulator/
+
+# Transient g++ host harness for the real firmware C++ (see host-sim/README.md).
+host-sim/
+
+# Byte-compiled / cache
+__pycache__/
+*.pyc
+.pytest_cache/

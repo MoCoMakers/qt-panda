@@ -1,0 +1,7 @@
+# Runtime dependencies — keep in sync with pyproject.toml [project.dependencies]
+PySide6>=6.5
+pyqtgraph>=0.13
+numpy>=1.24
+pyserial
+tifffile
+gwyfile
