@@ -149,6 +149,7 @@ public: // Access specifier
         stepper_motor.step(steps);
         stm_status.steps = stepper_motor.get_total_steps();
         stm_status.time_millis = millis();
+        stepper_motor.disable();
     }
     void motoroff()
     {
