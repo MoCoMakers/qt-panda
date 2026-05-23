@@ -141,10 +141,23 @@ module casetop()
 
 module casefloat()
 {
-    difference()
+/*
+    union()
     {
         cube([cx,cy,10],true);  
-                
+        translate([0,0,10])
+        cube([cx,cx,20],true);      
+    }
+    */
+    difference()
+    {
+        //cube([cx,cy,10],true);  
+        union()
+        {
+            cube([cx,cy,10],true);  
+            translate([0,0,-7])
+                cube([cx,cx-5,15],true);      
+        }
         translate([30,80, -5.15])
         roundMagnet();
         translate([-30,80, -5.15])
@@ -155,7 +168,7 @@ module casefloat()
         roundMagnet();   
 
         boltpattern2();
-        translate([0,0,-4])
+        translate([0,0,-10])
             AlumSquare ();        
 
         translate([0,0,37.5])
@@ -189,7 +202,8 @@ module casefloattop()
 
 module AlumSquare()
 {
-    cube([101.25,101.25,12],true);
+    //cube([101.25,101.25,12],true);
+    cube([101.5,101.5,12],true);
 }
 module PCB()
 {
