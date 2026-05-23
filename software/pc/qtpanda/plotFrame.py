@@ -140,7 +140,7 @@ class PlotFrame(QtWidgets.QWidget):
         if self.image_item is None:
             return
 
-        self.image_item.setImage(image_data, autoLevels=False)
+        self.image_item.setImage(image_data, autoLevels=True)
 
         if extent:
             y_start, y_end, x_start, x_end = extent

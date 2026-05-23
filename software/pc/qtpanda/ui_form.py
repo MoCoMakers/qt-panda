@@ -1364,7 +1364,7 @@ class Ui_Widget(object):
         self.lblBiasVal.setText(QCoreApplication.translate("Widget", u":", None))
         self.cmdApproach.setText(QCoreApplication.translate("Widget", u"Approach", None))
         self.cmdStop.setText(QCoreApplication.translate("Widget", u"Stop", None))
-        self.leTargetDAC.setText(QCoreApplication.translate("Widget", u"500", None))
+        self.leTargetDAC.setText(QCoreApplication.translate("Widget", u"1500", None))
         self.leSteps.setText(QCoreApplication.translate("Widget", u"1", None))
         self.lbXSettle.setText(QCoreApplication.translate("Widget", u"X Settle", None))
         self.spnXSettle.setSuffix(QCoreApplication.translate("Widget", u" uS", None))

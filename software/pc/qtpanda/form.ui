@@ -499,7 +499,7 @@
                 <item>
                  <widget class="QLineEdit" name="leTargetDAC">
                   <property name="text">
-                   <string>500</string>
+                   <string>1500</string>
                   </property>
                  </widget>
                 </item>

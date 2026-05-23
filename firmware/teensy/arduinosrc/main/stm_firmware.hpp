@@ -636,7 +636,158 @@ public: // Access specifier
             }
         }
         Serial.println("D");
-    }    
+    }
+/*
+    void start_scan(int x_start, int x_end, int x_resolution,
+                int y_start, int y_end, int y_resolution,
+                int sample_per_pixel)
+{
+    move_to(x_start, y_start);
+
+    double x_step = 1.0 * (x_end - x_start) / x_resolution;
+    double y_step = 1.0 * (y_end - y_start) / y_resolution;
+
+    // Tunable parameters (you WILL want to tweak these)
+    const int skip_pixels = 2;              // ignore first pixels after direction change
+    const int reverse_offset = 2;           // DAC units to shift reverse lines
+    const int direction_settle_mult = 5;    // extra settle time multiplier
+    const int sample_delay_us = 2;          // delay between samples
+
+    for (int y_i = 0; y_i < y_resolution; ++y_i)
+    {
+        int y_now = static_cast<int>(y_start + y_i * y_step);
+        set_dac_y(y_now);
+        delayMicroseconds(piezo_y_settle_uS);
+
+        bool reverse = (y_i % 2 == 1);
+
+        // Extra settle time when direction flips
+        if (reverse)
+        {
+            delayMicroseconds(piezo_x_settle_uS * direction_settle_mult);
+        }
+
+        for (int x_i = 0; x_i < x_resolution; ++x_i)
+        {
+            int x_index = reverse ? (x_resolution - 1 - x_i) : x_i;
+
+            int x_now = static_cast<int>(x_start + x_index * x_step);
+
+            // Apply small correction for reverse lines
+            if (reverse)
+            {
+                x_now += reverse_offset;
+            }
+
+            set_dac_x(x_now);
+            delayMicroseconds(piezo_x_settle_uS);
+
+            int err_sum = 0;
+            int dacz_sum = 0;
+
+            // TRUE per-pixel averaging
+            for (int s = 0; s < sample_per_pixel; ++s)
+            {
+                int adc_value = read_adc_raw();
+
+                if (this->stm_status.is_const_current)
+                {
+                    adc_value = control_current(adc_value);
+                }
+
+                err_sum += adc_value;
+                dacz_sum += stm_status.dac_z;
+
+                delayMicroseconds(sample_delay_us);
+            }
+
+            int avg_adc = err_sum / sample_per_pixel;
+            int avg_z   = dacz_sum / sample_per_pixel;
+
+            // Skip first few pixels (but still scanned for timing consistency)
+            if (x_i >= skip_pixels)
+            {
+                int store_index = reverse
+                    ? (x_resolution - 1 - x_i)
+                    : x_i;
+
+                scan_image_adc[store_index] = avg_adc;
+                scan_image_z[store_index]   = avg_z;
+            }
+        }
+
+        // Send line (same format, unchanged)
+        send_scan_line("A", y_i, scan_image_adc, x_resolution);
+        send_scan_line("Z", y_i, scan_image_z, x_resolution);
+    }
+
+    Serial.println("D");
+}
+*/
+/*
+  void start_scan(int x_start, int x_end, int x_resolution,
+                int y_start, int y_end, int y_resolution,
+                int sample_per_pixel)
+{
+    move_to(x_start, y_start);
+
+    double x_step = 1.0 * (x_end - x_start) / x_resolution;
+    double y_step = 1.0 * (y_end - y_start) / y_resolution;
+
+    std::vector<int> adc_pixel(x_resolution);
+    std::vector<int> z_pixel(x_resolution);
+
+    for (int y_i = 0; y_i < y_resolution; ++y_i)
+    {
+        int y_now = static_cast<int>(y_start + y_i * y_step);
+
+        set_dac_y(y_now);
+        delayMicroseconds(piezo_y_settle_uS);
+
+        // ---------------------------
+        // FORWARD SCAN (ACQUISITION)
+        // ---------------------------
+
+        for (int pixel = 0; pixel < x_resolution; ++pixel)
+        {
+            double x_base = x_start + pixel * x_step;
+
+            int err_sum = 0;
+            int dacz_sum = 0;
+
+            for (int s = 0; s < sample_per_pixel; ++s)
+            {
+                set_dac_x(static_cast<int>(x_base));
+                delayMicroseconds(piezo_x_settle_uS);
+
+                int adc_value = read_adc_raw();
+
+                if (this->stm_status.is_const_current)
+                {
+                    adc_value = control_current(adc_value);
+                }
+
+                err_sum += adc_value;
+                dacz_sum += stm_status.dac_z;
+            }
+
+            adc_pixel[pixel] = err_sum / sample_per_pixel;
+            z_pixel[pixel]   = dacz_sum / sample_per_pixel;
+        }
+
+        send_scan_line("A", y_i, adc_pixel.data(), x_resolution);
+        send_scan_line("Z", y_i, z_pixel.data(), x_resolution);
+
+        // ---------------------------
+        // RETRACE (SAFE RESET ONLY)
+        // ---------------------------
+
+        set_dac_x(x_start);
+        delayMicroseconds(piezo_x_settle_uS * 5);
+    }
+
+    Serial.println("D");
+}*/
 
     void start_scan(int x_start, int x_end, int x_resolution, int y_start, int y_end, int y_resolution, int sample_per_pixel)
     {

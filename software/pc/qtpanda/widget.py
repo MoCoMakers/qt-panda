@@ -46,6 +46,8 @@ class Widget(QWidget):
         self.ui = Ui_Widget()
         self.ui.setupUi(self)
         self.setWindowTitle("Moco Makers Lab STM")
+        self.moving = False;
+        self.laststep = 0;
         # ----------------------
         # STM Interface
         # ----------------------
@@ -80,6 +82,7 @@ class Widget(QWidget):
         layout3.addWidget(self.pltDAC)
 
         self.pltVals = plotframe.PlotFrame()
+
         layout4 = QVBoxLayout(self.ui.pltVals)
         layout4.setContentsMargins(0,0,0,0)
         layout4.addWidget(self.pltVals)
@@ -767,6 +770,18 @@ class Widget(QWidget):
 
         self.pltCurrent.update_plot(plot_x, plot_adc)
         self.pltSteps.update_plot(plot_x, plot_steps)
+
+        if(status.steps != self.laststep):
+            self.moving = True
+        else:
+            if(self.moving == True):  # if we were moving and now we're not - send a motor off message
+                print("MTOF") # MOTOR OFF
+                self.stm.send_cmd("MTOF")
+            self.moving = False
+
+
+        self.laststep = status.steps
+
     # ----------------------
     # Image Updates
     # ----------------------
@@ -778,6 +793,10 @@ class Widget(QWidget):
 
         x_start, x_end, x_res, y_start, y_end, y_res = self.stm.scan_config
 
+        #self.pltVals.update_image(
+        #    self.stm.scan_adc.T,
+        #    extent=[y_start, y_end, x_start, x_end]
+        #)
         self.pltVals.update_image(
             self.stm.scan_adc.T,
             extent=[y_start, y_end, x_start, x_end]

@@ -146,12 +146,11 @@ class PlotFrame(QtWidgets.QWidget):
             y_start, y_end, x_start, x_end = extent
 
             rect = QtCore.QRectF(
-                y_start,
                 x_start,
-                y_end - y_start,
-                x_end - x_start
+                y_start,
+                x_end - x_start,
+                y_end - y_start
             )
-
             self.image_item.setRect(rect)
 
     # --------------------------
