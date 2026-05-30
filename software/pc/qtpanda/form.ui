@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>1121</width>
-    <height>641</height>
+    <height>769</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -144,6 +144,13 @@
                  <widget class="QPushButton" name="cmdClear">
                   <property name="text">
                    <string>Clear</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QPushButton" name="cmdTest">
+                  <property name="text">
+                   <string>Test</string>
                   </property>
                  </widget>
                 </item>
@@ -1156,6 +1163,111 @@
                  </widget>
                 </item>
                 <item>
+                 <widget class="QWidget" name="wgtContScan" native="true">
+                  <layout class="QHBoxLayout" name="horizontalLayout_34">
+                   <property name="spacing">
+                    <number>3</number>
+                   </property>
+                   <property name="leftMargin">
+                    <number>3</number>
+                   </property>
+                   <property name="topMargin">
+                    <number>3</number>
+                   </property>
+                   <property name="rightMargin">
+                    <number>3</number>
+                   </property>
+                   <property name="bottomMargin">
+                    <number>3</number>
+                   </property>
+                   <item>
+                    <widget class="QLabel" name="lblscanSPP">
+                     <property name="text">
+                      <string>Samples / Pix</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item>
+                    <widget class="QLineEdit" name="leSamples">
+                     <property name="text">
+                      <string>10</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item>
+                    <spacer name="horizontalSpacer_15">
+                     <property name="orientation">
+                      <enum>Qt::Horizontal</enum>
+                     </property>
+                     <property name="sizeHint" stdset="0">
+                      <size>
+                       <width>40</width>
+                       <height>20</height>
+                      </size>
+                     </property>
+                    </spacer>
+                   </item>
+                  </layout>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QWidget" name="wgtScanMode" native="true">
+                  <layout class="QHBoxLayout" name="horizontalLayout_35">
+                   <property name="spacing">
+                    <number>3</number>
+                   </property>
+                   <property name="leftMargin">
+                    <number>3</number>
+                   </property>
+                   <property name="topMargin">
+                    <number>3</number>
+                   </property>
+                   <property name="rightMargin">
+                    <number>3</number>
+                   </property>
+                   <property name="bottomMargin">
+                    <number>3</number>
+                   </property>
+                   <item>
+                    <widget class="QCheckBox" name="chkTimingMode">
+                     <property name="text">
+                      <string>Use Accurate Timer</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item>
+                    <widget class="QSpinBox" name="spnTiminguS">
+                     <property name="suffix">
+                      <string> uS</string>
+                     </property>
+                     <property name="minimum">
+                      <number>1</number>
+                     </property>
+                     <property name="maximum">
+                      <number>500</number>
+                     </property>
+                     <property name="value">
+                      <number>40</number>
+                     </property>
+                    </widget>
+                   </item>
+                   <item>
+                    <spacer name="horizontalSpacer_16">
+                     <property name="orientation">
+                      <enum>Qt::Horizontal</enum>
+                     </property>
+                     <property name="sizeHint" stdset="0">
+                      <size>
+                       <width>40</width>
+                       <height>20</height>
+                      </size>
+                     </property>
+                    </spacer>
+                   </item>
+                  </layout>
+                 </widget>
+                </item>
+                <item>
                  <widget class="QWidget" name="wgtScan" native="true">
                   <layout class="QHBoxLayout" name="horizontalLayout_19">
                    <property name="leftMargin">
@@ -1178,45 +1290,37 @@
                     </widget>
                    </item>
                    <item>
-                    <widget class="QLabel" name="lblscanSPP">
+                    <widget class="QPushButton" name="cmdStartCont">
                      <property name="text">
-                      <string>Samples / Pix</string>
+                      <string>Continuous Scan</string>
                      </property>
                     </widget>
                    </item>
                    <item>
-                    <widget class="QLineEdit" name="leSamples">
+                    <widget class="QPushButton" name="cmdStopCont">
                      <property name="text">
-                      <string>10</string>
+                      <string>Stop Scan</string>
                      </property>
                     </widget>
                    </item>
                    <item>
-                    <widget class="QPushButton" name="cmdScanMulti">
-                     <property name="text">
-                      <string>Scan Multi </string>
+                    <spacer name="horizontalSpacer_14">
+                     <property name="orientation">
+                      <enum>Qt::Horizontal</enum>
                      </property>
-                    </widget>
-                   </item>
-                   <item>
-                    <widget class="QLabel" name="lblRepeat">
-                     <property name="text">
-                      <string>Repeat</string>
+                     <property name="sizeHint" stdset="0">
+                      <size>
+                       <width>40</width>
+                       <height>20</height>
+                      </size>
                      </property>
-                    </widget>
-                   </item>
-                   <item>
-                    <widget class="QLineEdit" name="leMultiScanTimes">
-                     <property name="text">
-                      <string>10</string>
-                     </property>
-                    </widget>
+                    </spacer>
                    </item>
                   </layout>
                  </widget>
                 </item>
                 <item>
-                 <widget class="QWidget" name="widget_5" native="true">
+                 <widget class="QWidget" name="wgtSave" native="true">
                   <layout class="QHBoxLayout" name="horizontalLayout_22">
                    <property name="spacing">
                     <number>3</number>
@@ -1233,6 +1337,13 @@
                    <property name="bottomMargin">
                     <number>3</number>
                    </property>
+                   <item>
+                    <widget class="QCheckBox" name="chkAutoSave">
+                     <property name="text">
+                      <string>Auto Save</string>
+                     </property>
+                    </widget>
+                   </item>
                    <item>
                     <widget class="QPushButton" name="cmdSaveScan">
                      <property name="text">

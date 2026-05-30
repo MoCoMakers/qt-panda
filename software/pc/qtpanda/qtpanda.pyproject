@@ -4,7 +4,7 @@
         "form.ui",
         "ui_form.py",
         "stm_control.py",
-        "plotFrame.py",
+        "plotframe.py",
         "STMBoxWidget.py",
         "qt_log_handler.py",
         "dependencies.txt",
