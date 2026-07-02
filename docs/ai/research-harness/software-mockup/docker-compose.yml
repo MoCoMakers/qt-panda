@@ -1,0 +1,56 @@
+# Full software mockup: the real PC software driving an emulated Arduino/STM
+# controller, wired together over a virtual serial link. No hardware needed.
+#
+#   docker compose up --build            # headless: emulator + driver
+#   STM_MODE=noise docker compose up      # baseline-noise scenario, etc.
+#   docker compose --profile gui up --build   # optional full Qt GUI (needs X11)
+#
+# Emulated-signal scenarios (env vars, see emulator/stm_emulator.py):
+#   STM_MODE = noise | tunnel | drift | inout   (default drift)
+
+services:
+  arduino:
+    build: ./emulator
+    environment:
+      STM_MODE:         ${STM_MODE:-drift}
+      STM_SETPOINT_PA:  ${STM_SETPOINT_PA:-300}
+      STM_DRIFT_PM_S:   ${STM_DRIFT_PM_S:-40}
+      STM_JITTER_PM:    ${STM_JITTER_PM:-30}
+      STM_INOUT_AMP_PM: ${STM_INOUT_AMP_PM:-250}
+      STM_PERIOD_S:     ${STM_PERIOD_S:-25}
+    ports:
+      - "9000:9000"   # optional: exposed for host-side debugging
+
+  # Default: headless driver using the REAL stm_control.STM.
+  pc:
+    build: ./pc
+    depends_on: [arduino]
+    environment:
+      ARDUINO_HOST:    arduino
+      ARDUINO_PORT:    9000
+      STM_SERIAL_PORT: /tmp/stm_pty
+      RUN_SECONDS:     ${RUN_SECONDS:-30}
+      POLL_HZ:         ${POLL_HZ:-20}
+      OUT_CSV:         /out/mockup_stability.csv
+    volumes:
+      - ../../../../pc/qtpanda:/app/qtpanda:ro   # real PC source, read-only
+      - ./out:/out                               # captured CSVs land here
+
+  # Optional: the actual PySide6 GUI. Needs an X server (Linux/WSLg).
+  gui:
+    profiles: ["gui"]
+    build:
+      context: ./pc
+      dockerfile: Dockerfile.gui
+    depends_on: [arduino]
+    environment:
+      ARDUINO_HOST:    arduino
+      ARDUINO_PORT:    9000
+      STM_SERIAL_PORT: /tmp/stm_pty
+      GUI:             "1"
+      DISPLAY:         ${DISPLAY:-:0}
+      QT_QPA_PLATFORM: xcb
+    volumes:
+      - ../../../../pc/qtpanda:/app/qtpanda      # writable: GUI logs land here
+      - ./out:/out
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw

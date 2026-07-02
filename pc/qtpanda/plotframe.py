@@ -36,6 +36,8 @@ class PlotFrame(QtWidgets.QWidget):
         self.plot_item = None
         self.curve = None
         self.image_item = None
+        self.bars = None
+        self.arrow = None
 
     # --------------------------
     # Line Plot
@@ -68,6 +70,72 @@ class PlotFrame(QtWidgets.QWidget):
 
         self.plot_item.setMouseEnabled(x=False, y=False)
         self.plot_item.enableAutoRange()
+
+    # --------------------------
+    # Histogram Plot
+    # --------------------------
+
+    def add_histogram(self, label=None, xlabel=None, ylabel=None, brush=None):
+
+        self.plot_item = self.graphics.addPlot()
+
+        if xlabel:
+            self.plot_item.setLabel('bottom', xlabel)
+
+        if ylabel:
+            self.plot_item.setLabel('left', ylabel)
+
+        if label:
+            self.plot_item.setTitle(label)
+
+        if brush is None:
+            brush = (80, 140, 255, 200)
+
+        # Bars: filled in live via update_histogram()
+        self.bars = pg.BarGraphItem(
+            x=[0], height=[0], width=1.0, brush=brush
+        )
+        self.plot_item.addItem(self.bars)
+
+        # Arrow marking the bin the most recent sample landed in.
+        # angle=-90 -> tip points straight down onto the bar top.
+        self.arrow = pg.ArrowItem(
+            angle=-90, tipAngle=45, headLen=18,
+            pen=pg.mkPen('r'), brush='r'
+        )
+        self.arrow.setVisible(False)
+        self.plot_item.addItem(self.arrow)
+
+        self.plot_item.setMouseEnabled(x=False, y=False)
+        self.plot_item.enableAutoRange()
+
+    def update_histogram(self, centers, counts, current_index=None):
+
+        if self.bars is None:
+            return
+
+        if len(centers) == 0:
+            return
+
+        width = (centers[1] - centers[0]) if len(centers) > 1 else 1.0
+
+        self.bars.setOpts(x=centers, height=counts, width=width * 0.9)
+
+        # Position the "currently growing bar" arrow
+        if (self.arrow is not None and
+                current_index is not None and
+                0 <= current_index < len(counts)):
+
+            peak = max(counts) if len(counts) else 0
+            headroom = max(peak * 0.06, 1)
+
+            self.arrow.setPos(
+                centers[current_index],
+                counts[current_index] + headroom
+            )
+            self.arrow.setVisible(True)
+        elif self.arrow is not None:
+            self.arrow.setVisible(False)
 
     # --------------------------
     # Image Plot
