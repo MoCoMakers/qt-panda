@@ -1,0 +1,4 @@
+# Generated artifacts — regenerate with `python harness.py`
+output/
+__pycache__/
+*.pyc
