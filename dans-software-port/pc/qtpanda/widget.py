@@ -20,8 +20,10 @@ import plotframe
 from datetime import datetime
 import numpy as np
 import stm_control
+import stab_metrics
 import time
 import csv
+import json
 import threading
 import pyqtgraph as pg
 import STMBoxWidget
@@ -204,6 +206,30 @@ class Widget(QWidget):
             idx = self.ui.lePort.findText(last_port)
             if idx >= 0:
                 self.ui.lePort.setCurrentIndex(idx)
+
+        # ----------------------
+        # Stability Histogram
+        # ----------------------
+        # NOTE: samples only accumulate while self.stm.history is being
+        # populated by GSTS polling, i.e. NOT while the continuous-scan
+        # reader owns the serial port (see update_real_time's early-out).
+        # That's the intended use case: monitoring drift while idle /
+        # holding position, not mid-raster.
+        self.stab_samples = []        # accumulated current samples (amps)
+        self.stab_times = []          # parallel time_millis for each sample
+        self.stab_running = False     # is the stream being recorded?
+        self.stab_last_t = None       # last consumed status time_millis
+        self.stab_t0 = None           # time_millis of first logged sample
+        self.stab_log_file = None     # open CSV file handle while recording
+        self.stab_log_writer = None   # csv.writer bound to stab_log_file
+        self.stab_log_path = None     # path of the current log file
+        self.build_stability_tab()
+        self.timer.timeout.connect(self.update_stability)
+
+        # ----------------------
+        # Fourier Analysis (populated when Stability recording is Stopped)
+        # ----------------------
+        self.build_fourier_tab()
 
 
     # ----------------------
@@ -840,6 +866,536 @@ class Widget(QWidget):
 
 
     # ----------------------
+    # Stability Histogram Tab
+    # ----------------------
+
+    # Tunneling gap sensitivity: I = I0 * exp(-2*kappa*z).
+    #   kappa = sqrt(2 m phi)/hbar ~= 0.5123 * sqrt(phi[eV])  [1/Angstrom]
+    # For a work function phi ~= 4 eV, kappa ~= 1.025 /A, so 2*kappa ~= 2.05 /A
+    # and a change of one unit in ln(I) corresponds to ~48.8 pm of gap motion
+    # (a decade of current ~= 1.1 A).  These let us translate the log-current
+    # slope into a physical z-drift velocity and the log-current spread into a
+    # mechanical jitter amplitude.
+    # Canonical math lives in stab_metrics.py (Qt-free, shared with the
+    # docker software-mockup so the emulator validates the same code).
+    STAB_WORK_FUNCTION_EV = 4.0
+    STAB_KAPPA_PER_M = stab_metrics.kappa_per_m(STAB_WORK_FUNCTION_EV)  # 1/m
+    STAB_PM_PER_LN = stab_metrics.pm_per_ln(STAB_WORK_FUNCTION_EV)      # pm per unit ln(I)
+
+    def build_stability_tab(self):
+        """Programmatically add a 'Stability' tab with a live, growing
+        histogram of the tunneling current. Built in code so the generated
+        ui_form.py is never touched."""
+
+        tab = QWidget()
+        outer = QVBoxLayout(tab)
+        outer.setContentsMargins(4, 4, 4, 4)
+
+        # --- control row -------------------------------------------------
+        ctl = QHBoxLayout()
+
+        self.cmdStabStart = QPushButton("Start")
+        self.cmdStabStop = QPushButton("Stop")
+        self.cmdStabClear = QPushButton("Clear")
+        self.cmdStabStop.setEnabled(False)
+
+        ctl.addWidget(self.cmdStabStart)
+        ctl.addWidget(self.cmdStabStop)
+        ctl.addWidget(self.cmdStabClear)
+
+        ctl.addSpacing(16)
+        ctl.addWidget(QLabel("Bins:"))
+        self.spnStabBins = QtWidgets.QSpinBox()
+        self.spnStabBins.setRange(5, 500)
+        self.spnStabBins.setValue(60)
+        ctl.addWidget(self.spnStabBins)
+
+        ctl.addSpacing(8)
+        ctl.addWidget(QLabel("Outlier cutoff (N·MAD):"))
+        self.spnStabNmad = QtWidgets.QDoubleSpinBox()
+        self.spnStabNmad.setRange(0.5, 20.0)
+        self.spnStabNmad.setSingleStep(0.5)
+        self.spnStabNmad.setValue(5.0)
+        self.spnStabNmad.setToolTip(
+            "Samples farther than N scaled median-absolute-deviations "
+            "from the median are excluded from the histogram."
+        )
+        ctl.addWidget(self.spnStabNmad)
+
+        ctl.addStretch(1)
+        outer.addLayout(ctl)
+
+        # --- readout row -------------------------------------------------
+        self.lblStabStats = QLabel("No data yet.")
+        self.lblStabStats.setStyleSheet("font-family: monospace;")
+        outer.addWidget(self.lblStabStats)
+
+        # Live drift / jitter readout derived from the log-current fit.
+        self.lblStabDrift = QLabel("")
+        self.lblStabDrift.setStyleSheet("font-family: monospace; color: #1a3;")
+        self.lblStabDrift.setToolTip(
+            "drift v_z: z-velocity from the slope of ln|I| vs time "
+            "(sign: + = gap opening / current shrinking).  "
+            "R2: how linear (drift-like) the trend is.  "
+            "jitter: mechanical z-noise from the spread of ln|I|.  "
+            "skew: asymmetry of the ln|I| distribution."
+        )
+        outer.addWidget(self.lblStabDrift)
+
+        # --- histogram plot ---------------------------------------------
+        self.pltStability = plotframe.PlotFrame()
+        self.pltStability.add_histogram(
+            label="Tunneling current distribution",
+            xlabel="Current (A)",
+            ylabel="Count",
+        )
+        outer.addWidget(self.pltStability, 1)
+
+        # --- wiring ------------------------------------------------------
+        self.cmdStabStart.clicked.connect(self.stab_start)
+        self.cmdStabStop.clicked.connect(self.stab_stop)
+        self.cmdStabClear.clicked.connect(self.stab_clear)
+        self.spnStabBins.valueChanged.connect(self.refresh_histogram)
+        self.spnStabNmad.valueChanged.connect(self.refresh_histogram)
+
+        self.ui.tabWidget.addTab(tab, "Stability")
+
+    @Slot()
+    def stab_start(self):
+        # Begin consuming only samples newer than the latest one we have,
+        # so we don't re-ingest the existing history buffer.
+        history = self.stm.history
+        self.stab_last_t = history[-1].time_millis if history else None
+        self._open_stab_log()
+        self.stab_running = True
+        self.cmdStabStart.setEnabled(False)
+        self.cmdStabStop.setEnabled(True)
+        print(f"[STAB] recording started ({len(self.stab_samples)} kept)")
+
+    @Slot()
+    def stab_stop(self):
+        self.stab_running = False
+        # PSD / Allan are computed once here and handed to both the summary
+        # writer and the Fourier tab, instead of each recomputing them.
+        psd = stab_metrics.power_spectrum(self.stab_times, self.stab_samples)
+        allan = stab_metrics.allan_deviation(self.stab_times, self.stab_samples)
+        self._save_stab_summary(psd, allan)
+        self._close_stab_log()
+        self.cmdStabStart.setEnabled(True)
+        self.cmdStabStop.setEnabled(False)
+        print(f"[STAB] recording stopped ({len(self.stab_samples)} samples)")
+        self.refresh_fourier_analysis(psd, allan)
+        self.ui.tabWidget.setCurrentWidget(self._fourierTab)
+
+    @Slot()
+    def stab_clear(self):
+        self.stab_samples = []
+        self.stab_times = []
+        self.stab_last_t = (
+            self.stm.history[-1].time_millis if self.stm.history else None
+        )
+        self.pltStability.update_histogram([], [], None)
+        self.lblStabStats.setText("No data yet.")
+        self.lblStabDrift.setText("")
+        print("[STAB] cleared")
+
+        self.pltFourierPsd.update_plot([], [])
+        self.pltFourierPsd.clear_marker()
+        self.pltFourierAllan.update_plot([], [])
+        self.pltFourierAllan.update_extra_curve("white", [], [])
+        self.pltFourierAllan.update_extra_curve("randomwalk", [], [])
+        self.pltFourierAllan.update_extra_curve("drift", [], [])
+        self.pltFourierAllan.clear_marker()
+        self.lblFourierStats.setText(
+            "No data yet — record a Stability session, then press Stop."
+        )
+
+    # --- raw-session logging -------------------------------------------------
+    # The in-memory history is a bounded, self-erasing deque, so a long drift
+    # run would silently lose its early samples.  We stream every raw sample to
+    # a timestamped CSV so the full (time-ordered) session survives on disk for
+    # offline analysis (Allan deviation, spread-vs-time, drift velocity, PSD).
+
+    def _save_stab_summary(self, psd, allan):
+        """Write a companion _summary.json alongside the CSV with all derived
+        metrics so sessions can be compared without reprocessing raw data.
+        ``psd`` / ``allan`` are the results already computed in stab_stop()
+        (either may be None when the recording was too short)."""
+        if not self.stab_log_path or not self.stab_samples:
+            return
+
+        summary_path = self.stab_log_path.replace(".csv", "_summary.json")
+        data = np.asarray(self.stab_samples, dtype=float)
+
+        # Robust (MAD) outlier rejection matching refresh_histogram().
+        med = float(np.median(data))
+        mad = float(np.median(np.abs(data - med)))
+        n_mad = self.spnStabNmad.value()
+        if mad > 0:
+            spread = 1.4826 * mad
+            kept = data[(data >= med - n_mad * spread) & (data <= med + n_mad * spread)]
+        else:
+            kept = data
+
+        histogram = {
+            "n_total": int(data.size),
+            "n_excluded": int(data.size - kept.size),
+            "mean_A": float(kept.mean()) if kept.size else None,
+            "std_A": float(kept.std()) if kept.size else None,
+            "median_A": float(np.median(kept)) if kept.size else None,
+            "latest_A": float(data[-1]),
+            "n_mad_cutoff": float(n_mad),
+        }
+
+        drift = stab_metrics.drift_metrics(
+            self.stab_times, self.stab_samples, self.STAB_PM_PER_LN
+        )
+
+        psd_summary = None
+        if psd is not None:
+            psd_summary = {
+                "peak_freq_hz": psd["peak_freq_hz"],
+                "peak_power": psd["peak_power"],
+                "peak_snr": psd["peak_snr"],
+                "peak_snr_threshold": psd["peak_snr_threshold"],
+                "peak_significant": psd["peak_significant"],
+                "fs_hz": psd["fs_hz"],
+                "n_samples": psd["n"],
+            }
+
+        allan_summary = None
+        if allan is not None:
+            allan_summary = {
+                "slope": allan["slope"],
+                "noise_type": stab_metrics.classify_allan_slope(allan["slope"]),
+                "tau_opt_s": allan["tau_opt_s"],
+                "sigma_min": allan["sigma_min"],
+                # Gap-jitter equivalent; None when not tunneling (mean
+                # current ~0 or fluctuations comparable to the mean).
+                "sigma_min_pm": stab_metrics.sigma_to_pm(
+                    allan["sigma_min"], histogram["mean_A"], self.STAB_PM_PER_LN
+                ),
+            }
+
+        summary = {
+            "csv_file": self.stab_log_path,
+            "work_function_eV": self.STAB_WORK_FUNCTION_EV,
+            "histogram": histogram,
+            "drift": drift,
+            "psd": psd_summary,
+            "allan": allan_summary,
+        }
+
+        try:
+            with open(summary_path, "w") as f:
+                json.dump(summary, f, indent=2)
+            print(f"[STAB] summary saved to {summary_path}")
+        except Exception as e:
+            print(f"[STAB] WARNING: could not write summary: {e}")
+
+    def _open_stab_log(self):
+        prefix = ""
+        try:
+            prefix = self.ui.leSave.text().strip()
+        except Exception:
+            prefix = ""
+        prefix = prefix or "stability"
+        ts = int(datetime.timestamp(datetime.now()) * 1000)
+        self.stab_log_path = f"{prefix}_stability_{ts}.csv"
+        self.stab_t0 = None
+        try:
+            self.stab_log_file = open(self.stab_log_path, "w", newline="")
+            self.stab_log_writer = csv.writer(self.stab_log_file)
+            self.stab_log_writer.writerow([
+                "elapsed_s", "time_millis", "adc", "current_A",
+                "dac_z", "bias", "steps",
+                "is_scanning", "is_const_current", "is_approaching",
+            ])
+            self.stab_log_file.flush()
+            print(f"[STAB] logging raw samples to {self.stab_log_path}")
+        except Exception as e:
+            self.stab_log_file = None
+            self.stab_log_writer = None
+            print(f"[STAB] WARNING: could not open log file: {e}")
+
+    def _close_stab_log(self):
+        if self.stab_log_file is not None:
+            try:
+                self.stab_log_file.flush()
+                self.stab_log_file.close()
+                print(f"[STAB] log closed: {self.stab_log_path}")
+            except Exception as e:
+                print(f"[STAB] WARNING: error closing log: {e}")
+        self.stab_log_file = None
+        self.stab_log_writer = None
+
+    def _log_stab_samples(self, samples):
+        """Append a batch of raw STM_Status samples to the open CSV."""
+        if self.stab_log_writer is None:
+            return
+        try:
+            for h in samples:
+                if self.stab_t0 is None:
+                    self.stab_t0 = h.time_millis
+                elapsed = (h.time_millis - self.stab_t0) / 1000.0
+                self.stab_log_writer.writerow([
+                    f"{elapsed:.3f}", h.time_millis, h.adc,
+                    f"{stm_control.STM_Status.adc_to_amp(h.adc):.6e}",
+                    h.dac_z, h.bias, h.steps,
+                    int(h.is_scanning), int(h.is_const_current),
+                    int(h.is_approaching),
+                ])
+            # Flush every batch so an unclean shutdown keeps the data.
+            self.stab_log_file.flush()
+        except Exception as e:
+            print(f"[STAB] WARNING: log write failed: {e}")
+
+    def update_stability(self):
+        """Pull any new status samples into the accumulator and redraw."""
+        if not self.stab_running:
+            return
+
+        history = self.stm.history
+        if not history:
+            return
+
+        # Append only samples we haven't consumed yet.
+        new = [
+            h for h in history
+            if self.stab_last_t is None or h.time_millis > self.stab_last_t
+        ]
+        if not new:
+            return
+
+        self.stab_last_t = new[-1].time_millis
+        for h in new:
+            self.stab_samples.append(stm_control.STM_Status.adc_to_amp(h.adc))
+            self.stab_times.append(h.time_millis)
+
+        # Stream the raw samples to disk before anything else, so the session
+        # is captured even if the histogram/UI later errors out.
+        self._log_stab_samples(new)
+
+        self.refresh_histogram()
+
+    def refresh_histogram(self):
+        """Recompute the histogram from accumulated samples with robust
+        (median ± N·MAD) outlier rejection and update the arrow."""
+        if not self.stab_samples:
+            return
+
+        data = np.asarray(self.stab_samples, dtype=float)
+
+        # --- robust outlier rejection (MAD) -----------------------------
+        med = np.median(data)
+        mad = np.median(np.abs(data - med))
+        n_mad = self.spnStabNmad.value()
+
+        if mad > 0:
+            # 1.4826 scales MAD to be a consistent estimator of std
+            # for normally-distributed data.
+            spread = 1.4826 * mad
+            lo = med - n_mad * spread
+            hi = med + n_mad * spread
+            mask = (data >= lo) & (data <= hi)
+            kept = data[mask]
+        else:
+            kept = data
+
+        if kept.size == 0:
+            return
+
+        bins = self.spnStabBins.value()
+        counts, edges = np.histogram(kept, bins=bins)
+        centers = (edges[:-1] + edges[1:]) / 2.0
+
+        # Which bin is the most recent (non-outlier) sample growing?
+        latest = data[-1]
+        cur_idx = None
+        if edges[0] <= latest <= edges[-1]:
+            cur_idx = int(np.clip(np.digitize(latest, edges) - 1,
+                                  0, len(counts) - 1))
+
+        self.pltStability.update_histogram(centers, counts, cur_idx)
+
+        # --- readout -----------------------------------------------------
+        n_out = data.size - kept.size
+        self.lblStabStats.setText(
+            "N={total}  (excluded {out})   "
+            "mean={mean:.3e} A   std={std:.3e} A   "
+            "median={median:.3e} A   latest={latest:.3e} A".format(
+                total=data.size, out=n_out,
+                mean=kept.mean(), std=kept.std(),
+                median=np.median(kept), latest=latest,
+            )
+        )
+
+        # --- live drift / jitter estimate --------------------------------
+        self._update_drift_readout()
+
+    def _update_drift_readout(self):
+        """Estimate z-drift velocity and mechanical jitter from the
+        time-ordered log-current, and show them live.
+
+        Because I = I0*exp(-2*kappa*z), we work in ln|I|:
+          * a constant gap drift v_z makes ln|I| linear in time with
+            slope = -2*kappa*v_z, so v_z = -(1/2kappa)*d(lnI)/dt;
+          * the spread of ln|I| maps to a mechanical z-jitter amplitude
+            sigma_z = std(lnI)/(2*kappa).
+        """
+        m = self._stab_drift_metrics(self.stab_times, self.stab_samples)
+        if m is None:
+            self.lblStabDrift.setText("drift: need more in-tunneling samples")
+            return
+        self.lblStabDrift.setText(
+            "drift v_z={vz:+.2f} pm/s  (R2={r2:.2f})   "
+            "jitter sigma_z~{jit:.1f} pm   "
+            "skew(lnI)={skew:+.2f}   [n={n} usable, dt={span:.1f}s]".format(
+                vz=m["vz_pm_s"], r2=m["r2"], jit=m["jitter_pm"],
+                skew=m["skew"], n=m["n"], span=m["span_s"],
+            )
+        )
+
+    def _stab_drift_metrics(self, times_ms, amps):
+        """Drift/jitter metrics from parallel (time_millis, amp) arrays, or
+        None if there isn't enough usable in-tunneling data. Delegates to the
+        shared, Qt-free stab_metrics module (single source of truth)."""
+        return stab_metrics.drift_metrics(times_ms, amps, self.STAB_PM_PER_LN)
+
+    # ----------------------
+    # Fourier Analysis Tab
+    # ----------------------
+    # Populated from the just-finished Stability recording when its Stop
+    # button is pressed (see stab_stop()). Two panels: a PSD of the raw
+    # tunneling current (peak-marked resonance, e.g. tip/collet ringing) and
+    # an Allan deviation (classifies white-noise vs random-walk vs linear
+    # drift, and predicts the best achievable dwell time before drift
+    # dominates). Math lives in stab_metrics.py.
+
+    def build_fourier_tab(self):
+        """Programmatically add a 'Fourier Analysis' tab: PSD (with peak
+        marker) + Allan deviation (with noise-type reference slopes)."""
+
+        tab = QWidget()
+        outer = QVBoxLayout(tab)
+        outer.setContentsMargins(4, 4, 4, 4)
+
+        self.lblFourierStats = QLabel(
+            "No data yet — record a Stability session, then press Stop."
+        )
+        self.lblFourierStats.setStyleSheet("font-family: monospace;")
+        outer.addWidget(self.lblFourierStats)
+
+        row = QHBoxLayout()
+
+        self.pltFourierPsd = plotframe.PlotFrame()
+        self.pltFourierPsd.add_plot(
+            label="PSD", xlabel="Frequency (Hz)", ylabel="Power (A^2/Hz)",
+            pen=pg.mkPen("b", width=2),
+        )
+        self.pltFourierPsd.set_log_mode(x=True, y=True)
+        self.pltFourierPsd.disable_si_prefix()
+        row.addWidget(self.pltFourierPsd, 1)
+
+        self.pltFourierAllan = plotframe.PlotFrame()
+        self.pltFourierAllan.add_plot(
+            label="Allan deviation", xlabel="Averaging time tau (s)",
+            ylabel="sigma_A (A)", pen=pg.mkPen("b", width=2),
+        )
+        self.pltFourierAllan.set_log_mode(x=True, y=True)
+        self.pltFourierAllan.disable_si_prefix()
+        self.pltFourierAllan.add_extra_curve(
+            "white", label="white noise (-1/2)",
+            pen=pg.mkPen("g", width=1, style=QtCore.Qt.PenStyle.DashLine))
+        self.pltFourierAllan.add_extra_curve(
+            "randomwalk", label="random-walk (+1/2)",
+            pen=pg.mkPen((255, 140, 0), width=1, style=QtCore.Qt.PenStyle.DashLine))
+        self.pltFourierAllan.add_extra_curve(
+            "drift", label="linear drift (+1)",
+            pen=pg.mkPen("r", width=1, style=QtCore.Qt.PenStyle.DashLine))
+        row.addWidget(self.pltFourierAllan, 1)
+
+        outer.addLayout(row, 1)
+
+        self._fourierTab = tab
+        self.ui.tabWidget.addTab(tab, "Fourier Analysis")
+
+    def refresh_fourier_analysis(self, psd, allan):
+        """Populate the tab from the PSD + Allan results computed at Stop
+        time in stab_stop() (either may be None if the recording was too
+        short for that analysis)."""
+        if psd is None and allan is None:
+            self.lblFourierStats.setText(
+                "Not enough data for Fourier analysis "
+                "(need a longer Stability recording)."
+            )
+            return
+
+        if psd is not None:
+            self.pltFourierPsd.update_plot(psd["freqs_hz"][1:], psd["psd"][1:])
+            # Only mark the peak when it stands clear of the broadband
+            # floor — the argmax of a flat spectrum is not a resonance.
+            if psd["peak_significant"]:
+                self.pltFourierPsd.mark_point(
+                    psd["peak_freq_hz"], psd["peak_power"],
+                    text=f'{psd["peak_freq_hz"]:.2f} Hz '
+                         f'({psd["peak_snr"]:.1f}x floor)',
+                )
+            else:
+                self.pltFourierPsd.clear_marker()
+
+        if allan is not None:
+            self.pltFourierAllan.update_plot(allan["taus_s"], allan["sigma_a"])
+            self.pltFourierAllan.update_extra_curve(
+                "white", allan["taus_s"], allan["ref_white"])
+            self.pltFourierAllan.update_extra_curve(
+                "randomwalk", allan["taus_s"], allan["ref_randomwalk"])
+            self.pltFourierAllan.update_extra_curve(
+                "drift", allan["taus_s"], allan["ref_drift"])
+            self.pltFourierAllan.mark_point(
+                allan["tau_opt_s"], allan["sigma_min"],
+                text=f'best dwell ~{allan["tau_opt_s"]:.2f}s',
+            )
+
+        if psd is None:
+            peak_txt = "n/a"
+        elif not psd["peak_significant"]:
+            peak_txt = (
+                f'none (max bin {psd["peak_snr"]:.1f}x floor, '
+                f'noise needs >{psd["peak_snr_threshold"]:.1f}x)'
+            )
+        else:
+            peak_txt = (
+                f'{psd["peak_freq_hz"]:.2f} Hz '
+                f'(P={psd["peak_power"]:.2e} A^2/Hz, '
+                f'{psd["peak_snr"]:.1f}x floor)'
+            )
+
+        if allan is None:
+            allan_txt = "Allan: n/a"
+        else:
+            sigma_txt = f'{allan["sigma_min"]:.2e} A'
+            # |mean of signed samples|, NOT mean(|samples|): for zero-mean
+            # noise mean(|x|) ~ 0.8*sigma, which fakes a "mean current" and
+            # yields a bogus pm conversion when there is no tunneling.
+            mean_a = abs(float(np.mean(self.stab_samples)))
+            sigma_pm = stab_metrics.sigma_to_pm(
+                allan["sigma_min"], mean_a, self.STAB_PM_PER_LN
+            )
+            if sigma_pm is not None:
+                sigma_txt += f' (~{sigma_pm:.1f} pm)'
+            allan_txt = (
+                f'Allan slope={allan["slope"]:+.2f} '
+                f'(~{stab_metrics.classify_allan_slope(allan["slope"])})   '
+                f'best dwell~{allan["tau_opt_s"]:.2f}s   '
+                f'sigma_min={sigma_txt}'
+            )
+
+        self.lblFourierStats.setText(
+            f"PSD peak={peak_txt}   {allan_txt}   [n={len(self.stab_samples)}]"
+        )
+
+    # ----------------------
     # Real-Time Updates
     # ----------------------
 
@@ -1168,6 +1724,8 @@ class Widget(QWidget):
 
         # Wire ScanController → LiveRaster / gauge / status
         self._scan_ctrl.lineReady.connect(self._cs_raster.update_line)
+        self._cs_frames_since_run = 0
+        self._scan_ctrl.lineReady.connect(self._on_cs_frame_seen)
         self._scan_ctrl.zUpdated.connect(self._cs_zgauge.setValue)
         self._scan_ctrl.engaged.connect(
             lambda: self._cs_status_lbl.setText("Engaged"))
@@ -1218,9 +1776,38 @@ class Widget(QWidget):
         if not self.stm.is_opened:
             self._cs_status_lbl.setText("Serial not open")
             return
+        if self.stm.firmware_tagged_status:
+            # "STAT:"-tagged GSTS replies fingerprint the pre-Phase-3
+            # firmware, which has no RUN handler / 'L' frames — a RUN would
+            # be silently ignored and the raster would stay blank.
+            self._cs_status_lbl.setText(
+                "Old firmware detected (STAT:-tagged status) — no "
+                "continuous-scan support. Reflash teensy/arduinosrc/main."
+            )
+            print("[ContinuousScan] REFUSED: firmware speaks the old "
+                  "protocol (STAT: prefix); RUN would be ignored.")
+            return
         self._on_cs_apply_settings()
+        self._cs_frames_since_run = 0
         self._scan_ctrl.start_run()
         self._cs_status_lbl.setText("Running…")
+        # Watchdog: if the firmware never streams a frame, say so instead
+        # of leaving a silently blank raster.
+        QtCore.QTimer.singleShot(3000, self._cs_check_stream_alive)
+
+    @Slot(int, object, object)
+    def _on_cs_frame_seen(self, *_):
+        self._cs_frames_since_run += 1
+
+    def _cs_check_stream_alive(self):
+        if self._scan_ctrl.is_running() and self._cs_frames_since_run == 0:
+            self._cs_status_lbl.setText(
+                "RUN sent, but no scan frames after 3 s — firmware not "
+                "streaming (old firmware flashed, or scan not producing "
+                "lines). Check firmware version / reflash."
+            )
+            print("[ContinuousScan] WARNING: no 'L' frames within 3 s "
+                  "of RUN.")
 
     @Slot()
     def _on_cs_halt(self):

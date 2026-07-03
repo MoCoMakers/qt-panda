@@ -8,7 +8,7 @@ wire protocol see [`../README.md`](../README.md).
 ---
 
 ## 1. System architecture
-
+ 
 ```
    PC (PySide6)                          Teensy 4.1 @ 600 MHz
  ┌───────────────────┐   USB-Serial    ┌──────────────────────────────┐
@@ -241,6 +241,21 @@ binary for high-throughput streaming:
 
 Big-endian was chosen to match Dan's convention and because `writePixel`
 packs MSB-first directly, avoiding any per-emit byte-swap.
+
+**Old-firmware fingerprint (`STAT:` prefix).** The pre-Phase-3 firmware
+(commit `e077127` era) prefixes its GSTS reply with `STAT:`
+(`STAT:0,0,0,0,-37,…`); the current firmware prints the bare CSV. This is
+undocumented on the wire but load-bearing: that old build has **no `RUN `
+handler and no binary `'L'` frames** (its `start_continuous_scan()` took
+`x_start/x_end/…` arguments on a different command), so a board still
+flashed with it accepts GSTS/legacy commands normally while silently
+ignoring `RUN ` — the Continuous Scan tab stays blank with no error.
+Verified by probing a live board on COM5 (2026-07-02): GSTS answered with
+the `STAT:` tag, `RUN ` streamed 0 bytes in 5 s. The PC side now records
+the tag (`STM.firmware_tagged_status`), refuses RUN with an explanatory
+status message when it was seen, and independently warns if no `'L'`
+frame arrives within 3 s of RUN. Remedy: reflash
+`teensy/arduinosrc/main`.
 
 ### 2.10 Hardware delta vs Dan
 

@@ -106,14 +106,27 @@ class STM(object):
                 return self.history[-1]
             try:
                 self.send_cmd('GSTS')
-                status_str = self.stm_serial.readline().decode()
+                status_str = self.stm_serial.readline().decode(errors='ignore').strip()
                 #logger.info(f"RX  {status_str}")
-                status_value = status_str.split(',')
-                status_value = [int(x) for x in status_value]
+
+                # Newer firmware tags status replies with a type prefix,
+                # e.g. "STAT:0,0,0,0,-19,...". Strip any leading "TAG:" so
+                # we parse just the CSV; plain CSV is left unchanged.
+                if ':' in status_str:
+                    status_str = status_str.rsplit(':', 1)[-1]
+
+                status_value = [int(x) for x in status_str.split(',') if x != '']
+
+                # Need the full 10-field status; anything shorter is a
+                # partial/garbled line (e.g. a log message) -> ignore it.
+                if len(status_value) < 10:
+                    raise ValueError(f"unparseable status: {status_str!r}")
+
                 self.status = STM_Status.from_list(status_value)
-            except:
-                print('no response')
-                return self.history[-1]
+            except Exception:
+                # No parseable reply this cycle; keep the last known status
+                # instead of crashing or spamming the console.
+                return self.history[-1] if self.history else self.status
         else:
             self.status = STM_Status()
         self.history.append(self.status)
