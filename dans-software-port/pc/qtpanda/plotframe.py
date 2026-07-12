@@ -1,6 +1,7 @@
 from PySide6 import QtWidgets, QtCore
 import pyqtgraph as pg
 import pyqtgraph.exporters
+from math import log10
 
 
 class PlotFrame(QtWidgets.QWidget):
@@ -145,6 +146,10 @@ class PlotFrame(QtWidgets.QWidget):
     # --------------------------
 
     def set_log_mode(self, x=False, y=False):
+        # Remember the log state: manually-added items (mark_point's scatter /
+        # text) are not auto-transformed the way the primary PlotDataItem is,
+        # so they must be log10'd explicitly to land on the curve.
+        self._log_x, self._log_y = x, y
         if self.plot_item is not None:
             self.plot_item.setLogMode(x=x, y=y)
 
@@ -159,21 +164,28 @@ class PlotFrame(QtWidgets.QWidget):
             self.plot_item.getAxis(name).enableAutoSIPrefix(False)
 
     def mark_point(self, x, y, text=None, color='r'):
-        """Draw (or move) a single marker + optional text label."""
+        """Draw (or move) a single marker + optional text label.
+
+        On log-mode axes the added ScatterPlotItem / TextItem are NOT
+        auto-transformed like the primary PlotDataItem, so their coords must be
+        converted to log10 explicitly — otherwise the marker lands at
+        (10**x, 10**y), far off the curve (the Allan 'best dwell' bug)."""
         if self.plot_item is None:
             return
+        mx = log10(x) if getattr(self, "_log_x", False) and x > 0 else x
+        my = log10(y) if getattr(self, "_log_y", False) and y > 0 else y
         if self.marker is None:
             self.marker = pg.ScatterPlotItem(
                 size=10, brush=pg.mkBrush(color), pen=pg.mkPen('k', width=1)
             )
             self.plot_item.addItem(self.marker)
-        self.marker.setData([x], [y])
+        self.marker.setData([mx], [my])
         if text:
             if self.marker_text is None:
                 self.marker_text = pg.TextItem(color=color, anchor=(0, 1))
                 self.plot_item.addItem(self.marker_text)
             self.marker_text.setText(text)
-            self.marker_text.setPos(x, y)
+            self.marker_text.setPos(mx, my)
 
     def clear_marker(self):
         if self.marker is not None:

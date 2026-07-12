@@ -10,3 +10,6 @@ host-sim/
 __pycache__/
 *.pyc
 .pytest_cache/
+
+# Runtime logs (stm.log file handler, session_journal JSONL sessions)
+logs/

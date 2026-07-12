@@ -230,9 +230,69 @@ def report(v):
         print(f"    ! {fl}")
 
 
+def reconstruct(journal_path):
+    """Print a per-session timeline from a session_journal JSONL (roadmap J3):
+    settings at entry, every command, note, and record marker on one clock,
+    plus a summary + verdict of the linked raw CSV.  This is the 'replay' the
+    2026-07-02 analysis had to rebuild by hand."""
+    try:
+        recs = [json.loads(ln) for ln in open(journal_path) if ln.strip()]
+    except OSError as e:
+        print(f"[reconstruct] cannot read {journal_path}: {e}")
+        return 2
+    if not recs:
+        print("[reconstruct] empty journal")
+        return 2
+
+    t0 = recs[0].get("t", 0)
+    print(f"=== session {os.path.basename(journal_path)} "
+          f"({len(recs)} events) ===")
+    linked_csv = None
+    for r in recs:
+        dt = r.get("t", t0) - t0
+        typ, src, data = r["type"], r.get("src", "?"), r.get("data", {})
+        tag = f"[{dt:7.2f}s] {src:5s} {typ:12s}"
+        if typ == "session_start":
+            print(tag, json.dumps(data))
+            linked_csv = data.get("csv", linked_csv)
+        elif typ == "command":
+            print(tag, data.get("cmd"))
+        elif typ == "note":
+            print(tag, "NOTE:", data.get("text"))
+        elif typ == "record":
+            print(tag, data.get("event"), data.get("path") or "")
+            linked_csv = data.get("path", linked_csv)
+        elif typ == "setting":
+            print(tag, f"{data.get('name')}: "
+                       f"{data.get('old')} -> {data.get('new')}")
+        elif typ == "snapshot":
+            print(tag, data.get("event"),
+                  json.dumps(data.get("settings", {})))
+        elif typ == "session_end":
+            print(tag)
+        else:
+            print(tag, json.dumps(data))
+
+    if linked_csv:
+        path = linked_csv
+        if not os.path.isabs(path):
+            path = os.path.join(
+                os.path.dirname(os.path.abspath(journal_path)), path)
+        if os.path.exists(path):
+            v = analyze(path)
+            print(f"--- linked CSV {os.path.basename(path)}: "
+                  f"verdict {v['verdict']}, n={v.get('n')} ---")
+        else:
+            print(f"--- linked CSV not found: {linked_csv} ---")
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("csvs", nargs="+", help="stability session CSV file(s)")
+    ap.add_argument("csvs", nargs="*", help="stability session CSV file(s)")
+    ap.add_argument("--reconstruct", metavar="JOURNAL",
+                    help="print a session timeline from a session_journal "
+                         "JSONL (J3) instead of grading CSVs")
     ap.add_argument("--verdict-only", action="store_true",
                     help="v0 mode (currently the only mode)")
     ap.add_argument("--ledger", metavar="PATH",
@@ -240,6 +300,11 @@ def main(argv=None):
     ap.add_argument("--no-json", action="store_true",
                     help="don't write <name>_verdict.json next to the CSV")
     args = ap.parse_args(argv)
+
+    if args.reconstruct:
+        return reconstruct(args.reconstruct)
+    if not args.csvs:
+        ap.error("no CSVs given (use positional CSV(s) or --reconstruct <journal>)")
 
     worst = 0
     for path in args.csvs:
