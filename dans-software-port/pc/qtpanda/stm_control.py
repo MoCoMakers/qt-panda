@@ -3,8 +3,11 @@ import serial
 import numpy as np
 from dataclasses import dataclass
 from collections import deque
+import os
 import time
 import logging
+
+import session_journal
 
 logger = logging.getLogger("stm")
 logger.setLevel(logging.DEBUG)
@@ -13,6 +16,15 @@ formatter = logging.Formatter(
     "%(asctime)s  %(message)s",
     datefmt="%H:%M:%S"
 )
+
+# Persistent file log so port-open attempts (and everything else this module
+# logs) survive past the GUI's txtLog pane -- checkable with no session
+# running and no one watching the screen (e.g. "did it even try COM3?").
+os.makedirs("logs", exist_ok=True)
+_file_handler = logging.FileHandler(os.path.join("logs", "stm.log"))
+_file_handler.setFormatter(formatter)
+if not any(isinstance(h, logging.FileHandler) for h in logger.handlers):
+    logger.addHandler(_file_handler)
 
 @dataclass
 class STM_Status:
@@ -101,29 +113,39 @@ class STM(object):
         self.scan_noise = np.ones([512, 512], dtype=np.float32)
 
     def open(self, device):
-        if device == "EMU":
-            # Opt-in software firmware emulator (no hardware). Lives in the
-            # transient, repo-excluded ../../emulator/ folder; imported lazily
-            # so the shippable code never depends on it and works unchanged
-            # if that folder is absent.
-            import os
-            import sys
-            _emu_dir = os.path.normpath(os.path.join(
-                os.path.dirname(os.path.abspath(__file__)),
-                "..", "..", "emulator"))
-            if _emu_dir not in sys.path:
-                sys.path.insert(0, _emu_dir)
-            try:
-                from firmware_emulator import EmulatedSerial
-            except ImportError as exc:
-                raise RuntimeError(
-                    "device 'EMU' requested but the emulator harness is not "
-                    "available (dans-software-port/emulator/ is excluded from "
-                    "the public repo)") from exc
-            self.stm_serial = EmulatedSerial(timeout=1)
-        else:
-            self.stm_serial = serial.Serial(device, 921600, timeout=1) # 921600 # 115200
+        logger.info(f"OPEN attempt  device={device}")
+        try:
+            if device == "EMU":
+                # Opt-in software firmware emulator (no hardware). Lives in the
+                # transient, repo-excluded ../../emulator/ folder; imported lazily
+                # so the shippable code never depends on it and works unchanged
+                # if that folder is absent.
+                import sys
+                _emu_dir = os.path.normpath(os.path.join(
+                    os.path.dirname(os.path.abspath(__file__)),
+                    "..", "..", "emulator"))
+                if _emu_dir not in sys.path:
+                    sys.path.insert(0, _emu_dir)
+                try:
+                    from firmware_emulator import EmulatedSerial
+                except ImportError as exc:
+                    raise RuntimeError(
+                        "device 'EMU' requested but the emulator harness is not "
+                        "available (dans-software-port/emulator/ is excluded from "
+                        "the public repo)") from exc
+                self.stm_serial = EmulatedSerial(timeout=1)
+            elif "://" in device:
+                # pyserial URL handler, e.g. socket://127.0.0.1:9000 — how the
+                # docker software-mockup emulator is reached from the host
+                # (its compose file exposes TCP 9000 for exactly this).
+                self.stm_serial = serial.serial_for_url(device, timeout=1)
+            else:
+                self.stm_serial = serial.Serial(device, 921600, timeout=1) # 921600 # 115200
+        except Exception as e:
+            logger.error(f"OPEN failed  device={device}  ({e})")
+            raise
         self.is_opened = True
+        logger.info(f"OPEN ok  device={device}")
 
     def get_status(self):
         if self.busy:
@@ -174,10 +196,16 @@ class STM(object):
     def clear(self):
         self.history = deque()
 
-    def send_cmd(self, cmd):
+    def send_cmd(self, cmd, src="human"):
         if self.is_opened:
             self.stm_serial.write(cmd.encode())
             #logger.info(f"TX  {cmd}")
+            # Journal every command at this single choke point (no-op unless a
+            # session is active).  Skip the ~9 Hz GSTS status poll — its reply
+            # is captured as a 'sample' record, so logging the poll too would
+            # just double the volume with no added information.
+            if not cmd.strip().upper().startswith("GSTS"):
+                session_journal.log_command(cmd, src=src)
 
     def move_motor(self, steps):
         self.send_cmd(f'MTMV {steps}')

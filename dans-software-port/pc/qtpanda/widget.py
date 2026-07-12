@@ -52,6 +52,8 @@ print("OpenGL widget import OK")
 
 import scan_controller
 import live_raster
+import stab_runner
+import session_journal
 
 os.makedirs("./images", exist_ok=True)
 print("Profile:",
@@ -433,7 +435,11 @@ class Widget(QWidget):
             print("[CMD] OPEN  no port selected")
             return
         print(f"[CMD] OPEN  port={port}")
-        self.stm.open(port)
+        try:
+            self.stm.open(port)
+        except Exception as e:
+            print(f"[CMD] OPEN failed: {e}")
+            return
         self._settings.setValue("serial/port", port)
 
     # ----------------------
@@ -585,17 +591,48 @@ class Widget(QWidget):
     # MOTOR MOVEMENT
     # ----------------------
 
+    def motor_move(self, steps, src="human"):
+        """Single choke point for MTMV: move, then ALWAYS de-energize the
+        coils (MTOF) once the move finishes.  The driver otherwise leaves
+        holding current flowing after every move — heat + magnetic noise
+        right at the tip (bench issue, 2026-07-09)."""
+        print(f"MTMV {steps}")
+        self.stm.send_cmd(f"MTMV {steps}", src=src)
+        self._arm_auto_mtof()
+
+    def _arm_auto_mtof(self):
+        # MTMV executes asynchronously in the firmware (GSTS keeps flowing
+        # during the move), so an immediate MTOF would cut the move short.
+        # Instead watch the steps counter from the status poll and send MTOF
+        # once it has been stable for ~1 s (or after a 30 s hard cap).
+        self._mtof_last_steps = None
+        self._mtof_stable = 0
+        self._mtof_polls = 0
+        if getattr(self, "_mtof_timer", None) is None:
+            self._mtof_timer = QTimer(self)
+            self._mtof_timer.timeout.connect(self._mtof_poll)
+        self._mtof_timer.start(300)
+
+    def _mtof_poll(self):
+        self._mtof_polls += 1
+        cur = self.stm.status.steps
+        self._mtof_stable = (self._mtof_stable + 1
+                             if cur == self._mtof_last_steps else 0)
+        self._mtof_last_steps = cur
+        if self._mtof_stable >= 3 or self._mtof_polls > 100:
+            self._mtof_timer.stop()
+            print("[MOTOR] move settled — auto MTOF")
+            self.stm.send_cmd("MTOF", src="auto")
+
     @Slot()
     def on_cmdMotUp_clicked(self):
         amount = self.ui.spnMot.value()
-        print(f"MTMV {amount}")
-        self.stm.send_cmd(f"MTMV {amount}")
+        self.motor_move(amount)
 
     @Slot()
     def on_cmdMotDown_clicked(self):
         amount = self.ui.spnMot.value()
-        print(f"MTMV {amount}")
-        self.stm.send_cmd(f"MTMV -{amount}")
+        self.motor_move(-amount)
 
     @Slot()
     def on_cmdMotOff_clicked(self):
@@ -967,6 +1004,10 @@ class Widget(QWidget):
         history = self.stm.history
         self.stab_last_t = history[-1].time_millis if history else None
         self._open_stab_log()
+        # Open a session journal for this recording: commands + notes +
+        # lifecycle land here on one clock; raw samples stay in the linked CSV.
+        session_journal.start(csv=self.stab_log_path)
+        session_journal.record("stab_start", path=self.stab_log_path)
         self.stab_running = True
         self.cmdStabStart.setEnabled(False)
         self.cmdStabStop.setEnabled(True)
@@ -984,7 +1025,20 @@ class Widget(QWidget):
         self.cmdStabStart.setEnabled(True)
         self.cmdStabStop.setEnabled(False)
         print(f"[STAB] recording stopped ({len(self.stab_samples)} samples)")
-        self.refresh_fourier_analysis(psd, allan)
+        # Grade the just-saved session with the real stab_runner logic so the
+        # operator gets an unambiguous "are we tunneling?" verdict, not just raw
+        # metrics.  Graded from the CSV (it has adc/bias for the rail/bias checks
+        # the in-memory current-only buffer can't provide).
+        verdict = None
+        try:
+            verdict = stab_runner.analyze(self.stab_log_path)
+        except Exception as e:
+            print(f"[STAB] verdict unavailable: {e}")
+        session_journal.record("stab_stop", path=self.stab_log_path)
+        if verdict is not None:
+            session_journal.note(f"verdict={verdict['verdict']}", src="auto")
+        session_journal.stop()
+        self.refresh_fourier_analysis(psd, allan, verdict)
         self.ui.tabWidget.setCurrentWidget(self._fourierTab)
 
     @Slot()
@@ -1320,12 +1374,44 @@ class Widget(QWidget):
         self._fourierTab = tab
         self.ui.tabWidget.addTab(tab, "Fourier Analysis")
 
-    def refresh_fourier_analysis(self, psd, allan):
+    _VERDICT_LABELS = {
+        "TUNNELING_LIKE": "TUNNELING-LIKE",
+        "NOISE_ONLY": "NOISE ONLY (electronics floor, not the junction)",
+        "CONTACT": "CONTACT (tip railed against surface)",
+        "EMI_CONTAMINATED": "EMI CONTAMINATED (bench interference)",
+        "INSUFFICIENT": "INSUFFICIENT DATA",
+    }
+    _VERDICT_COLORS = {
+        "TUNNELING_LIKE": "#1a7f2e",   # green
+        "INSUFFICIENT": "#8a6d00",     # amber
+    }
+
+    def _fourier_verdict_banner(self, verdict):
+        """(banner_text, css_color) for the tunneling verdict, or ('', black)."""
+        if not verdict:
+            return "", "black"
+        name = verdict.get("verdict", "?")
+        label = self._VERDICT_LABELS.get(name, name)
+        crit = verdict.get("criteria", {})
+        mos = crit.get("signed_mean_over_sigma")
+        detail = ""
+        if mos is not None:
+            need = crit.get("required_sigmas", 3.0)
+            detail = f"  (signed mean/sigma={mos:.2f}, need >={need:.0f})"
+        color = self._VERDICT_COLORS.get(name, "#b00020")   # default red
+        return f"VERDICT: {label}{detail}\n", color
+
+    def refresh_fourier_analysis(self, psd, allan, verdict=None):
         """Populate the tab from the PSD + Allan results computed at Stop
         time in stab_stop() (either may be None if the recording was too
-        short for that analysis)."""
+        short for that analysis).  ``verdict`` is the stab_runner grading of
+        the session, surfaced as an unambiguous tunneling banner."""
+        banner, color = self._fourier_verdict_banner(verdict)
+        self.lblFourierStats.setStyleSheet(
+            f"font-family: monospace; font-weight: bold; color: {color};")
         if psd is None and allan is None:
             self.lblFourierStats.setText(
+                banner +
                 "Not enough data for Fourier analysis "
                 "(need a longer Stability recording)."
             )
@@ -1392,6 +1478,7 @@ class Widget(QWidget):
             )
 
         self.lblFourierStats.setText(
+            banner +
             f"PSD peak={peak_txt}   {allan_txt}   [n={len(self.stab_samples)}]"
         )
 
@@ -1946,10 +2033,33 @@ class Widget(QWidget):
 
 
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--port", default=None,
+                        help="serial port to open at startup "
+                             "(COM5, EMU, socket://host:9000, ...)")
+    parser.add_argument("--copilot", type=int, default=0, metavar="HTTP_PORT",
+                        help="start the copilot bridge on this localhost "
+                             "port (0 = off)")
+    args, qt_args = parser.parse_known_args()
 
-    app = QApplication(sys.argv)
+    app = QApplication(sys.argv[:1] + qt_args)
     widget = Widget()
     widget.show()
+
+    if args.port:
+        idx = widget.ui.lePort.findText(args.port)
+        if idx >= 0:
+            widget.ui.lePort.setCurrentIndex(idx)
+        else:
+            widget.ui.lePort.setEditText(args.port)
+        widget.on_cmdOpen_clicked()
+
+    if args.copilot:
+        import copilot_bridge
+        widget._copilot_bridge = copilot_bridge.start(widget,
+                                                      port=args.copilot)
+
     sys.exit(app.exec())
 
 """ //for use with the toml
