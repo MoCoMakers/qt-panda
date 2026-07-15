@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>1121</width>
-    <height>769</height>
+    <height>641</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -144,13 +144,6 @@
                  <widget class="QPushButton" name="cmdClear">
                   <property name="text">
                    <string>Clear</string>
-                  </property>
-                 </widget>
-                </item>
-                <item>
-                 <widget class="QPushButton" name="cmdTest">
-                  <property name="text">
-                   <string>Test</string>
                   </property>
                  </widget>
                 </item>
@@ -506,7 +499,7 @@
                 <item>
                  <widget class="QLineEdit" name="leTargetDAC">
                   <property name="text">
-                   <string>1500</string>
+                   <string>500</string>
                   </property>
                  </widget>
                 </item>
@@ -991,9 +984,6 @@
                 <item>
                  <widget class="QWidget" name="wgtLePID_2" native="true">
                   <layout class="QHBoxLayout" name="horizontalLayout_17">
-                   <property name="spacing">
-                    <number>3</number>
-                   </property>
                    <property name="leftMargin">
                     <number>3</number>
                    </property>
@@ -1040,9 +1030,6 @@
                 <item>
                  <widget class="QWidget" name="wgtLePID" native="true">
                   <layout class="QHBoxLayout" name="horizontalLayout_14">
-                   <property name="spacing">
-                    <number>3</number>
-                   </property>
                    <property name="leftMargin">
                     <number>3</number>
                    </property>
@@ -1163,111 +1150,6 @@
                  </widget>
                 </item>
                 <item>
-                 <widget class="QWidget" name="wgtContScan" native="true">
-                  <layout class="QHBoxLayout" name="horizontalLayout_34">
-                   <property name="spacing">
-                    <number>3</number>
-                   </property>
-                   <property name="leftMargin">
-                    <number>3</number>
-                   </property>
-                   <property name="topMargin">
-                    <number>3</number>
-                   </property>
-                   <property name="rightMargin">
-                    <number>3</number>
-                   </property>
-                   <property name="bottomMargin">
-                    <number>3</number>
-                   </property>
-                   <item>
-                    <widget class="QLabel" name="lblscanSPP">
-                     <property name="text">
-                      <string>Samples / Pix</string>
-                     </property>
-                    </widget>
-                   </item>
-                   <item>
-                    <widget class="QLineEdit" name="leSamples">
-                     <property name="text">
-                      <string>10</string>
-                     </property>
-                    </widget>
-                   </item>
-                   <item>
-                    <spacer name="horizontalSpacer_15">
-                     <property name="orientation">
-                      <enum>Qt::Horizontal</enum>
-                     </property>
-                     <property name="sizeHint" stdset="0">
-                      <size>
-                       <width>40</width>
-                       <height>20</height>
-                      </size>
-                     </property>
-                    </spacer>
-                   </item>
-                  </layout>
-                 </widget>
-                </item>
-                <item>
-                 <widget class="QWidget" name="wgtScanMode" native="true">
-                  <layout class="QHBoxLayout" name="horizontalLayout_35">
-                   <property name="spacing">
-                    <number>3</number>
-                   </property>
-                   <property name="leftMargin">
-                    <number>3</number>
-                   </property>
-                   <property name="topMargin">
-                    <number>3</number>
-                   </property>
-                   <property name="rightMargin">
-                    <number>3</number>
-                   </property>
-                   <property name="bottomMargin">
-                    <number>3</number>
-                   </property>
-                   <item>
-                    <widget class="QCheckBox" name="chkTimingMode">
-                     <property name="text">
-                      <string>Use Accurate Timer</string>
-                     </property>
-                    </widget>
-                   </item>
-                   <item>
-                    <widget class="QSpinBox" name="spnTiminguS">
-                     <property name="suffix">
-                      <string> uS</string>
-                     </property>
-                     <property name="minimum">
-                      <number>1</number>
-                     </property>
-                     <property name="maximum">
-                      <number>500</number>
-                     </property>
-                     <property name="value">
-                      <number>40</number>
-                     </property>
-                    </widget>
-                   </item>
-                   <item>
-                    <spacer name="horizontalSpacer_16">
-                     <property name="orientation">
-                      <enum>Qt::Horizontal</enum>
-                     </property>
-                     <property name="sizeHint" stdset="0">
-                      <size>
-                       <width>40</width>
-                       <height>20</height>
-                      </size>
-                     </property>
-                    </spacer>
-                   </item>
-                  </layout>
-                 </widget>
-                </item>
-                <item>
                  <widget class="QWidget" name="wgtScan" native="true">
                   <layout class="QHBoxLayout" name="horizontalLayout_19">
                    <property name="leftMargin">
@@ -1290,37 +1172,45 @@
                     </widget>
                    </item>
                    <item>
-                    <widget class="QPushButton" name="cmdStartCont">
+                    <widget class="QLabel" name="lblscanSPP">
                      <property name="text">
-                      <string>Continuous Scan</string>
+                      <string>Samples / Pix</string>
                      </property>
                     </widget>
                    </item>
                    <item>
-                    <widget class="QPushButton" name="cmdStopCont">
+                    <widget class="QLineEdit" name="leSamples">
                      <property name="text">
-                      <string>Stop Scan</string>
+                      <string>10</string>
                      </property>
                     </widget>
                    </item>
                    <item>
-                    <spacer name="horizontalSpacer_14">
-                     <property name="orientation">
-                      <enum>Qt::Horizontal</enum>
+                    <widget class="QPushButton" name="cmdScanMulti">
+                     <property name="text">
+                      <string>Scan Multi </string>
                      </property>
-                     <property name="sizeHint" stdset="0">
-                      <size>
-                       <width>40</width>
-                       <height>20</height>
-                      </size>
+                    </widget>
+                   </item>
+                   <item>
+                    <widget class="QLabel" name="lblRepeat">
+                     <property name="text">
+                      <string>Repeat</string>
                      </property>
-                    </spacer>
+                    </widget>
+                   </item>
+                   <item>
+                    <widget class="QLineEdit" name="leMultiScanTimes">
+                     <property name="text">
+                      <string>10</string>
+                     </property>
+                    </widget>
                    </item>
                   </layout>
                  </widget>
                 </item>
                 <item>
-                 <widget class="QWidget" name="wgtSave" native="true">
+                 <widget class="QWidget" name="widget_5" native="true">
                   <layout class="QHBoxLayout" name="horizontalLayout_22">
                    <property name="spacing">
                     <number>3</number>
@@ -1337,13 +1227,6 @@
                    <property name="bottomMargin">
                     <number>3</number>
                    </property>
-                   <item>
-                    <widget class="QCheckBox" name="chkAutoSave">
-                     <property name="text">
-                      <string>Auto Save</string>
-                     </property>
-                    </widget>
-                   </item>
                    <item>
                     <widget class="QPushButton" name="cmdSaveScan">
                      <property name="text">
@@ -1433,7 +1316,7 @@
                <string>Move tip away from target</string>
               </property>
               <property name="text">
-               <string>Down</string>
+               <string>Retract</string>
               </property>
              </widget>
             </item>
@@ -1456,7 +1339,7 @@
                <string>Move tip close to target</string>
               </property>
               <property name="text">
-               <string>Up</string>
+               <string>Approach</string>
               </property>
              </widget>
             </item>
@@ -1526,21 +1409,6 @@
        <string>Main</string>
       </attribute>
       <layout class="QVBoxLayout" name="verticalLayout_6">
-       <property name="spacing">
-        <number>3</number>
-       </property>
-       <property name="leftMargin">
-        <number>3</number>
-       </property>
-       <property name="topMargin">
-        <number>3</number>
-       </property>
-       <property name="rightMargin">
-        <number>3</number>
-       </property>
-       <property name="bottomMargin">
-        <number>3</number>
-       </property>
        <item>
         <widget class="QWidget" name="wgtMainTop" native="true">
          <property name="sizePolicy">
@@ -1611,21 +1479,6 @@
             </widget>
             <widget class="QWidget" name="wgtBottomSplitter" native="true">
              <layout class="QVBoxLayout" name="verticalLayout_11">
-              <property name="spacing">
-               <number>3</number>
-              </property>
-              <property name="leftMargin">
-               <number>3</number>
-              </property>
-              <property name="topMargin">
-               <number>3</number>
-              </property>
-              <property name="rightMargin">
-               <number>3</number>
-              </property>
-              <property name="bottomMargin">
-               <number>3</number>
-              </property>
               <item>
                <widget class="QSplitter" name="splitter_2">
                 <property name="orientation">
@@ -1683,21 +1536,6 @@
           <item>
            <widget class="QWidget" name="wgtAutoLevels" native="true">
             <layout class="QHBoxLayout" name="horizontalLayout_12">
-             <property name="spacing">
-              <number>3</number>
-             </property>
-             <property name="leftMargin">
-              <number>3</number>
-             </property>
-             <property name="topMargin">
-              <number>3</number>
-             </property>
-             <property name="rightMargin">
-              <number>3</number>
-             </property>
-             <property name="bottomMargin">
-              <number>3</number>
-             </property>
              <item>
               <spacer name="horizontalSpacer">
                <property name="orientation">
@@ -1765,21 +1603,6 @@
        <string>dI/dV Curve</string>
       </attribute>
       <layout class="QVBoxLayout" name="verticalLayout_5">
-       <property name="spacing">
-        <number>3</number>
-       </property>
-       <property name="leftMargin">
-        <number>3</number>
-       </property>
-       <property name="topMargin">
-        <number>3</number>
-       </property>
-       <property name="rightMargin">
-        <number>3</number>
-       </property>
-       <property name="bottomMargin">
-        <number>3</number>
-       </property>
        <item>
         <widget class="QWidget" name="widget" native="true">
          <property name="sizePolicy">
@@ -1853,21 +1676,6 @@
           <item>
            <widget class="QWidget" name="wgtPlotControls" native="true">
             <layout class="QHBoxLayout" name="horizontalLayout_9">
-             <property name="spacing">
-              <number>3</number>
-             </property>
-             <property name="leftMargin">
-              <number>3</number>
-             </property>
-             <property name="topMargin">
-              <number>3</number>
-             </property>
-             <property name="rightMargin">
-              <number>3</number>
-             </property>
-             <property name="bottomMargin">
-              <number>3</number>
-             </property>
              <item>
               <widget class="QPushButton" name="cmdScanIV">
                <property name="text">
@@ -1928,21 +1736,6 @@
           <item>
            <widget class="QWidget" name="wgtIVButtons2" native="true">
             <layout class="QHBoxLayout" name="horizontalLayout_10">
-             <property name="spacing">
-              <number>3</number>
-             </property>
-             <property name="leftMargin">
-              <number>3</number>
-             </property>
-             <property name="topMargin">
-              <number>3</number>
-             </property>
-             <property name="rightMargin">
-              <number>3</number>
-             </property>
-             <property name="bottomMargin">
-              <number>3</number>
-             </property>
              <item>
               <widget class="QPushButton" name="cmdSaveIV">
                <property name="text">
@@ -1983,21 +1776,6 @@
        <string>dI/dZ Curve</string>
       </attribute>
       <layout class="QVBoxLayout" name="verticalLayout_14">
-       <property name="spacing">
-        <number>3</number>
-       </property>
-       <property name="leftMargin">
-        <number>3</number>
-       </property>
-       <property name="topMargin">
-        <number>3</number>
-       </property>
-       <property name="rightMargin">
-        <number>3</number>
-       </property>
-       <property name="bottomMargin">
-        <number>3</number>
-       </property>
        <item>
         <widget class="QWidget" name="pltdIdZ" native="true">
          <property name="sizePolicy">
@@ -2011,39 +1789,9 @@
        <item>
         <widget class="QWidget" name="wgtScanIV_2" native="true">
          <layout class="QVBoxLayout" name="verticalLayout_13">
-          <property name="spacing">
-           <number>3</number>
-          </property>
-          <property name="leftMargin">
-           <number>3</number>
-          </property>
-          <property name="topMargin">
-           <number>3</number>
-          </property>
-          <property name="rightMargin">
-           <number>3</number>
-          </property>
-          <property name="bottomMargin">
-           <number>3</number>
-          </property>
           <item>
            <widget class="QWidget" name="wgtPlotdIdZControls" native="true">
             <layout class="QHBoxLayout" name="horizontalLayout_20">
-             <property name="spacing">
-              <number>3</number>
-             </property>
-             <property name="leftMargin">
-              <number>3</number>
-             </property>
-             <property name="topMargin">
-              <number>3</number>
-             </property>
-             <property name="rightMargin">
-              <number>3</number>
-             </property>
-             <property name="bottomMargin">
-              <number>3</number>
-             </property>
              <item>
               <widget class="QPushButton" name="cmdScandIdZ">
                <property name="text">
@@ -2104,21 +1852,6 @@
           <item>
            <widget class="QWidget" name="wgtIVButtons2_2" native="true">
             <layout class="QHBoxLayout" name="horizontalLayout_24">
-             <property name="spacing">
-              <number>3</number>
-             </property>
-             <property name="leftMargin">
-              <number>3</number>
-             </property>
-             <property name="topMargin">
-              <number>3</number>
-             </property>
-             <property name="rightMargin">
-              <number>3</number>
-             </property>
-             <property name="bottomMargin">
-              <number>3</number>
-             </property>
              <item>
               <widget class="QPushButton" name="cmdSaveIV_2">
                <property name="text">
@@ -2159,21 +1892,6 @@
        <string>grid spectroscopy</string>
       </attribute>
       <layout class="QVBoxLayout" name="verticalLayout_17">
-       <property name="spacing">
-        <number>3</number>
-       </property>
-       <property name="leftMargin">
-        <number>3</number>
-       </property>
-       <property name="topMargin">
-        <number>3</number>
-       </property>
-       <property name="rightMargin">
-        <number>3</number>
-       </property>
-       <property name="bottomMargin">
-        <number>3</number>
-       </property>
        <item>
         <widget class="QWidget" name="wgtTopGrid" native="true">
          <property name="sizePolicy">
@@ -2189,18 +1907,6 @@
           </size>
          </property>
          <layout class="QHBoxLayout" name="horizontalLayout">
-          <property name="leftMargin">
-           <number>3</number>
-          </property>
-          <property name="topMargin">
-           <number>3</number>
-          </property>
-          <property name="rightMargin">
-           <number>3</number>
-          </property>
-          <property name="bottomMargin">
-           <number>3</number>
-          </property>
           <item>
            <widget class="QWidget" name="pltGridImage" native="true">
             <property name="sizePolicy">
@@ -2220,21 +1926,6 @@
           <item>
            <widget class="QWidget" name="wgtRightGridBias" native="true">
             <layout class="QVBoxLayout" name="verticalLayout_18">
-             <property name="spacing">
-              <number>3</number>
-             </property>
-             <property name="leftMargin">
-              <number>3</number>
-             </property>
-             <property name="topMargin">
-              <number>3</number>
-             </property>
-             <property name="rightMargin">
-              <number>3</number>
-             </property>
-             <property name="bottomMargin">
-              <number>3</number>
-             </property>
              <item>
               <widget class="QLabel" name="lblGridBias">
                <property name="text">
@@ -2503,21 +2194,6 @@
        <string>Noise Scan</string>
       </attribute>
       <layout class="QVBoxLayout" name="verticalLayout_20">
-       <property name="spacing">
-        <number>3</number>
-       </property>
-       <property name="leftMargin">
-        <number>3</number>
-       </property>
-       <property name="topMargin">
-        <number>3</number>
-       </property>
-       <property name="rightMargin">
-        <number>3</number>
-       </property>
-       <property name="bottomMargin">
-        <number>3</number>
-       </property>
        <item>
         <widget class="QWidget" name="pltNoise" native="true">
          <property name="sizePolicy">
@@ -2531,21 +2207,6 @@
        <item>
         <widget class="QWidget" name="wgtNoise" native="true">
          <layout class="QHBoxLayout" name="horizontalLayout_33">
-          <property name="spacing">
-           <number>3</number>
-          </property>
-          <property name="leftMargin">
-           <number>3</number>
-          </property>
-          <property name="topMargin">
-           <number>3</number>
-          </property>
-          <property name="rightMargin">
-           <number>3</number>
-          </property>
-          <property name="bottomMargin">
-           <number>3</number>
-          </property>
           <item>
            <widget class="QPushButton" name="cmdNoiseScan">
             <property name="text">

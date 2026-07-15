@@ -25,7 +25,7 @@ class Ui_Widget(object):
     def setupUi(self, Widget):
         if not Widget.objectName():
             Widget.setObjectName(u"Widget")
-        Widget.resize(1121, 769)
+        Widget.resize(1121, 641)
         self.horizontalLayout_21 = QHBoxLayout(Widget)
         self.horizontalLayout_21.setSpacing(3)
         self.horizontalLayout_21.setObjectName(u"horizontalLayout_21")
@@ -85,11 +85,6 @@ class Ui_Widget(object):
         self.cmdClear.setObjectName(u"cmdClear")
 
         self.horizontalLayout_11.addWidget(self.cmdClear)
-
-        self.cmdTest = QPushButton(self.wgtSerial)
-        self.cmdTest.setObjectName(u"cmdTest")
-
-        self.horizontalLayout_11.addWidget(self.cmdTest)
 
         self.lePort = QLineEdit(self.wgtSerial)
         self.lePort.setObjectName(u"lePort")
@@ -536,7 +531,6 @@ class Ui_Widget(object):
         self.wgtLePID_2 = QWidget(self.grpScan)
         self.wgtLePID_2.setObjectName(u"wgtLePID_2")
         self.horizontalLayout_17 = QHBoxLayout(self.wgtLePID_2)
-        self.horizontalLayout_17.setSpacing(3)
         self.horizontalLayout_17.setObjectName(u"horizontalLayout_17")
         self.horizontalLayout_17.setContentsMargins(3, 3, 3, 3)
         self.lblYScan = QLabel(self.wgtLePID_2)
@@ -565,7 +559,6 @@ class Ui_Widget(object):
         self.wgtLePID = QWidget(self.grpScan)
         self.wgtLePID.setObjectName(u"wgtLePID")
         self.horizontalLayout_14 = QHBoxLayout(self.wgtLePID)
-        self.horizontalLayout_14.setSpacing(3)
         self.horizontalLayout_14.setObjectName(u"horizontalLayout_14")
         self.horizontalLayout_14.setContentsMargins(3, 3, 3, 3)
         self.pushButton = QPushButton(self.wgtLePID)
@@ -634,55 +627,6 @@ class Ui_Widget(object):
 
         self.verticalLayout_8.addWidget(self.wgtConstCurrent)
 
-        self.wgtContScan = QWidget(self.grpScan)
-        self.wgtContScan.setObjectName(u"wgtContScan")
-        self.horizontalLayout_34 = QHBoxLayout(self.wgtContScan)
-        self.horizontalLayout_34.setSpacing(3)
-        self.horizontalLayout_34.setObjectName(u"horizontalLayout_34")
-        self.horizontalLayout_34.setContentsMargins(3, 3, 3, 3)
-        self.lblscanSPP = QLabel(self.wgtContScan)
-        self.lblscanSPP.setObjectName(u"lblscanSPP")
-
-        self.horizontalLayout_34.addWidget(self.lblscanSPP)
-
-        self.leSamples = QLineEdit(self.wgtContScan)
-        self.leSamples.setObjectName(u"leSamples")
-
-        self.horizontalLayout_34.addWidget(self.leSamples)
-
-        self.horizontalSpacer_15 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-
-        self.horizontalLayout_34.addItem(self.horizontalSpacer_15)
-
-
-        self.verticalLayout_8.addWidget(self.wgtContScan)
-
-        self.wgtScanMode = QWidget(self.grpScan)
-        self.wgtScanMode.setObjectName(u"wgtScanMode")
-        self.horizontalLayout_35 = QHBoxLayout(self.wgtScanMode)
-        self.horizontalLayout_35.setSpacing(3)
-        self.horizontalLayout_35.setObjectName(u"horizontalLayout_35")
-        self.horizontalLayout_35.setContentsMargins(3, 3, 3, 3)
-        self.chkTimingMode = QCheckBox(self.wgtScanMode)
-        self.chkTimingMode.setObjectName(u"chkTimingMode")
-
-        self.horizontalLayout_35.addWidget(self.chkTimingMode)
-
-        self.spnTiminguS = QSpinBox(self.wgtScanMode)
-        self.spnTiminguS.setObjectName(u"spnTiminguS")
-        self.spnTiminguS.setMinimum(1)
-        self.spnTiminguS.setMaximum(500)
-        self.spnTiminguS.setValue(40)
-
-        self.horizontalLayout_35.addWidget(self.spnTiminguS)
-
-        self.horizontalSpacer_16 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-
-        self.horizontalLayout_35.addItem(self.horizontalSpacer_16)
-
-
-        self.verticalLayout_8.addWidget(self.wgtScanMode)
-
         self.wgtScan = QWidget(self.grpScan)
         self.wgtScan.setObjectName(u"wgtScan")
         self.horizontalLayout_19 = QHBoxLayout(self.wgtScan)
@@ -693,46 +637,52 @@ class Ui_Widget(object):
 
         self.horizontalLayout_19.addWidget(self.cmdScan)
 
-        self.cmdStartCont = QPushButton(self.wgtScan)
-        self.cmdStartCont.setObjectName(u"cmdStartCont")
+        self.lblscanSPP = QLabel(self.wgtScan)
+        self.lblscanSPP.setObjectName(u"lblscanSPP")
 
-        self.horizontalLayout_19.addWidget(self.cmdStartCont)
+        self.horizontalLayout_19.addWidget(self.lblscanSPP)
 
-        self.cmdStopCont = QPushButton(self.wgtScan)
-        self.cmdStopCont.setObjectName(u"cmdStopCont")
+        self.leSamples = QLineEdit(self.wgtScan)
+        self.leSamples.setObjectName(u"leSamples")
 
-        self.horizontalLayout_19.addWidget(self.cmdStopCont)
+        self.horizontalLayout_19.addWidget(self.leSamples)
 
-        self.horizontalSpacer_14 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        self.cmdScanMulti = QPushButton(self.wgtScan)
+        self.cmdScanMulti.setObjectName(u"cmdScanMulti")
 
-        self.horizontalLayout_19.addItem(self.horizontalSpacer_14)
+        self.horizontalLayout_19.addWidget(self.cmdScanMulti)
+
+        self.lblRepeat = QLabel(self.wgtScan)
+        self.lblRepeat.setObjectName(u"lblRepeat")
+
+        self.horizontalLayout_19.addWidget(self.lblRepeat)
+
+        self.leMultiScanTimes = QLineEdit(self.wgtScan)
+        self.leMultiScanTimes.setObjectName(u"leMultiScanTimes")
+
+        self.horizontalLayout_19.addWidget(self.leMultiScanTimes)
 
 
         self.verticalLayout_8.addWidget(self.wgtScan)
 
-        self.wgtSave = QWidget(self.grpScan)
-        self.wgtSave.setObjectName(u"wgtSave")
-        self.horizontalLayout_22 = QHBoxLayout(self.wgtSave)
+        self.widget_5 = QWidget(self.grpScan)
+        self.widget_5.setObjectName(u"widget_5")
+        self.horizontalLayout_22 = QHBoxLayout(self.widget_5)
         self.horizontalLayout_22.setSpacing(3)
         self.horizontalLayout_22.setObjectName(u"horizontalLayout_22")
         self.horizontalLayout_22.setContentsMargins(3, 3, 3, 3)
-        self.chkAutoSave = QCheckBox(self.wgtSave)
-        self.chkAutoSave.setObjectName(u"chkAutoSave")
-
-        self.horizontalLayout_22.addWidget(self.chkAutoSave)
-
-        self.cmdSaveScan = QPushButton(self.wgtSave)
+        self.cmdSaveScan = QPushButton(self.widget_5)
         self.cmdSaveScan.setObjectName(u"cmdSaveScan")
 
         self.horizontalLayout_22.addWidget(self.cmdSaveScan)
 
-        self.leSave = QLineEdit(self.wgtSave)
+        self.leSave = QLineEdit(self.widget_5)
         self.leSave.setObjectName(u"leSave")
 
         self.horizontalLayout_22.addWidget(self.leSave)
 
 
-        self.verticalLayout_8.addWidget(self.wgtSave)
+        self.verticalLayout_8.addWidget(self.widget_5)
 
         self.verticalSpacer_3 = QSpacerItem(20, 40, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
 
@@ -834,9 +784,7 @@ class Ui_Widget(object):
         self.tbMain = QWidget()
         self.tbMain.setObjectName(u"tbMain")
         self.verticalLayout_6 = QVBoxLayout(self.tbMain)
-        self.verticalLayout_6.setSpacing(3)
         self.verticalLayout_6.setObjectName(u"verticalLayout_6")
-        self.verticalLayout_6.setContentsMargins(3, 3, 3, 3)
         self.wgtMainTop = QWidget(self.tbMain)
         self.wgtMainTop.setObjectName(u"wgtMainTop")
         sizePolicy2.setHeightForWidth(self.wgtMainTop.sizePolicy().hasHeightForWidth())
@@ -873,9 +821,7 @@ class Ui_Widget(object):
         self.wgtBottomSplitter = QWidget(self.splitter_3)
         self.wgtBottomSplitter.setObjectName(u"wgtBottomSplitter")
         self.verticalLayout_11 = QVBoxLayout(self.wgtBottomSplitter)
-        self.verticalLayout_11.setSpacing(3)
         self.verticalLayout_11.setObjectName(u"verticalLayout_11")
-        self.verticalLayout_11.setContentsMargins(3, 3, 3, 3)
         self.splitter_2 = QSplitter(self.wgtBottomSplitter)
         self.splitter_2.setObjectName(u"splitter_2")
         self.splitter_2.setOrientation(Qt.Horizontal)
@@ -910,9 +856,7 @@ class Ui_Widget(object):
         self.wgtAutoLevels = QWidget(self.wgtFrameBottom)
         self.wgtAutoLevels.setObjectName(u"wgtAutoLevels")
         self.horizontalLayout_12 = QHBoxLayout(self.wgtAutoLevels)
-        self.horizontalLayout_12.setSpacing(3)
         self.horizontalLayout_12.setObjectName(u"horizontalLayout_12")
-        self.horizontalLayout_12.setContentsMargins(3, 3, 3, 3)
         self.horizontalSpacer = QSpacerItem(565, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_12.addItem(self.horizontalSpacer)
@@ -943,9 +887,7 @@ class Ui_Widget(object):
         self.tbIV = QWidget()
         self.tbIV.setObjectName(u"tbIV")
         self.verticalLayout_5 = QVBoxLayout(self.tbIV)
-        self.verticalLayout_5.setSpacing(3)
         self.verticalLayout_5.setObjectName(u"verticalLayout_5")
-        self.verticalLayout_5.setContentsMargins(3, 3, 3, 3)
         self.widget = QWidget(self.tbIV)
         self.widget.setObjectName(u"widget")
         sizePolicy7 = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
@@ -984,9 +926,7 @@ class Ui_Widget(object):
         self.wgtPlotControls = QWidget(self.wgtScanIV)
         self.wgtPlotControls.setObjectName(u"wgtPlotControls")
         self.horizontalLayout_9 = QHBoxLayout(self.wgtPlotControls)
-        self.horizontalLayout_9.setSpacing(3)
         self.horizontalLayout_9.setObjectName(u"horizontalLayout_9")
-        self.horizontalLayout_9.setContentsMargins(3, 3, 3, 3)
         self.cmdScanIV = QPushButton(self.wgtPlotControls)
         self.cmdScanIV.setObjectName(u"cmdScanIV")
 
@@ -1021,9 +961,7 @@ class Ui_Widget(object):
         self.wgtIVButtons2 = QWidget(self.wgtScanIV)
         self.wgtIVButtons2.setObjectName(u"wgtIVButtons2")
         self.horizontalLayout_10 = QHBoxLayout(self.wgtIVButtons2)
-        self.horizontalLayout_10.setSpacing(3)
         self.horizontalLayout_10.setObjectName(u"horizontalLayout_10")
-        self.horizontalLayout_10.setContentsMargins(3, 3, 3, 3)
         self.cmdSaveIV = QPushButton(self.wgtIVButtons2)
         self.cmdSaveIV.setObjectName(u"cmdSaveIV")
 
@@ -1048,9 +986,7 @@ class Ui_Widget(object):
         self.tbdIdZ = QWidget()
         self.tbdIdZ.setObjectName(u"tbdIdZ")
         self.verticalLayout_14 = QVBoxLayout(self.tbdIdZ)
-        self.verticalLayout_14.setSpacing(3)
         self.verticalLayout_14.setObjectName(u"verticalLayout_14")
-        self.verticalLayout_14.setContentsMargins(3, 3, 3, 3)
         self.pltdIdZ = QWidget(self.tbdIdZ)
         self.pltdIdZ.setObjectName(u"pltdIdZ")
         sizePolicy2.setHeightForWidth(self.pltdIdZ.sizePolicy().hasHeightForWidth())
@@ -1061,15 +997,11 @@ class Ui_Widget(object):
         self.wgtScanIV_2 = QWidget(self.tbdIdZ)
         self.wgtScanIV_2.setObjectName(u"wgtScanIV_2")
         self.verticalLayout_13 = QVBoxLayout(self.wgtScanIV_2)
-        self.verticalLayout_13.setSpacing(3)
         self.verticalLayout_13.setObjectName(u"verticalLayout_13")
-        self.verticalLayout_13.setContentsMargins(3, 3, 3, 3)
         self.wgtPlotdIdZControls = QWidget(self.wgtScanIV_2)
         self.wgtPlotdIdZControls.setObjectName(u"wgtPlotdIdZControls")
         self.horizontalLayout_20 = QHBoxLayout(self.wgtPlotdIdZControls)
-        self.horizontalLayout_20.setSpacing(3)
         self.horizontalLayout_20.setObjectName(u"horizontalLayout_20")
-        self.horizontalLayout_20.setContentsMargins(3, 3, 3, 3)
         self.cmdScandIdZ = QPushButton(self.wgtPlotdIdZControls)
         self.cmdScandIdZ.setObjectName(u"cmdScandIdZ")
 
@@ -1104,9 +1036,7 @@ class Ui_Widget(object):
         self.wgtIVButtons2_2 = QWidget(self.wgtScanIV_2)
         self.wgtIVButtons2_2.setObjectName(u"wgtIVButtons2_2")
         self.horizontalLayout_24 = QHBoxLayout(self.wgtIVButtons2_2)
-        self.horizontalLayout_24.setSpacing(3)
         self.horizontalLayout_24.setObjectName(u"horizontalLayout_24")
-        self.horizontalLayout_24.setContentsMargins(3, 3, 3, 3)
         self.cmdSaveIV_2 = QPushButton(self.wgtIVButtons2_2)
         self.cmdSaveIV_2.setObjectName(u"cmdSaveIV_2")
 
@@ -1131,9 +1061,7 @@ class Ui_Widget(object):
         self.tbGridSpectro = QWidget()
         self.tbGridSpectro.setObjectName(u"tbGridSpectro")
         self.verticalLayout_17 = QVBoxLayout(self.tbGridSpectro)
-        self.verticalLayout_17.setSpacing(3)
         self.verticalLayout_17.setObjectName(u"verticalLayout_17")
-        self.verticalLayout_17.setContentsMargins(3, 3, 3, 3)
         self.wgtTopGrid = QWidget(self.tbGridSpectro)
         self.wgtTopGrid.setObjectName(u"wgtTopGrid")
         sizePolicy8 = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
@@ -1144,7 +1072,6 @@ class Ui_Widget(object):
         self.wgtTopGrid.setMinimumSize(QSize(0, 50))
         self.horizontalLayout = QHBoxLayout(self.wgtTopGrid)
         self.horizontalLayout.setObjectName(u"horizontalLayout")
-        self.horizontalLayout.setContentsMargins(3, 3, 3, 3)
         self.pltGridImage = QWidget(self.wgtTopGrid)
         self.pltGridImage.setObjectName(u"pltGridImage")
         sizePolicy5.setHeightForWidth(self.pltGridImage.sizePolicy().hasHeightForWidth())
@@ -1156,9 +1083,7 @@ class Ui_Widget(object):
         self.wgtRightGridBias = QWidget(self.wgtTopGrid)
         self.wgtRightGridBias.setObjectName(u"wgtRightGridBias")
         self.verticalLayout_18 = QVBoxLayout(self.wgtRightGridBias)
-        self.verticalLayout_18.setSpacing(3)
         self.verticalLayout_18.setObjectName(u"verticalLayout_18")
-        self.verticalLayout_18.setContentsMargins(3, 3, 3, 3)
         self.lblGridBias = QLabel(self.wgtRightGridBias)
         self.lblGridBias.setObjectName(u"lblGridBias")
 
@@ -1299,9 +1224,7 @@ class Ui_Widget(object):
         self.tab = QWidget()
         self.tab.setObjectName(u"tab")
         self.verticalLayout_20 = QVBoxLayout(self.tab)
-        self.verticalLayout_20.setSpacing(3)
         self.verticalLayout_20.setObjectName(u"verticalLayout_20")
-        self.verticalLayout_20.setContentsMargins(3, 3, 3, 3)
         self.pltNoise = QWidget(self.tab)
         self.pltNoise.setObjectName(u"pltNoise")
         sizePolicy7.setHeightForWidth(self.pltNoise.sizePolicy().hasHeightForWidth())
@@ -1312,9 +1235,7 @@ class Ui_Widget(object):
         self.wgtNoise = QWidget(self.tab)
         self.wgtNoise.setObjectName(u"wgtNoise")
         self.horizontalLayout_33 = QHBoxLayout(self.wgtNoise)
-        self.horizontalLayout_33.setSpacing(3)
         self.horizontalLayout_33.setObjectName(u"horizontalLayout_33")
-        self.horizontalLayout_33.setContentsMargins(3, 3, 3, 3)
         self.cmdNoiseScan = QPushButton(self.wgtNoise)
         self.cmdNoiseScan.setObjectName(u"cmdNoiseScan")
 
@@ -1399,7 +1320,6 @@ class Ui_Widget(object):
         self.cmdOpen.setText(QCoreApplication.translate("Widget", u"Open", None))
         self.cmdReset.setText(QCoreApplication.translate("Widget", u"Reset", None))
         self.cmdClear.setText(QCoreApplication.translate("Widget", u"Clear", None))
-        self.cmdTest.setText(QCoreApplication.translate("Widget", u"Test", None))
         self.lePort.setText(QCoreApplication.translate("Widget", u"/dev/ttyACM0", None))
         self.lblBias_2.setText(QCoreApplication.translate("Widget", u"DACX", None))
         self.lblDACXVal.setText(QCoreApplication.translate("Widget", u":", None))
@@ -1411,9 +1331,9 @@ class Ui_Widget(object):
         self.cmdSendBias.setText(QCoreApplication.translate("Widget", u"Set Bias", None))
         self.lblBias.setText(QCoreApplication.translate("Widget", u"Sample Bias  ", None))
         self.lblBiasVal.setText(QCoreApplication.translate("Widget", u":", None))
-        self.cmdApproach.setText(QCoreApplication.translate("Widget", u"Approach", None))
+        self.cmdApproach.setText(QCoreApplication.translate("Widget", u"Auto Approach", None))
         self.cmdStop.setText(QCoreApplication.translate("Widget", u"Stop", None))
-        self.leTargetDAC.setText(QCoreApplication.translate("Widget", u"1500", None))
+        self.leTargetDAC.setText(QCoreApplication.translate("Widget", u"500", None))
         self.leSteps.setText(QCoreApplication.translate("Widget", u"1", None))
         self.lbXSettle.setText(QCoreApplication.translate("Widget", u"X Settle", None))
         self.spnXSettle.setSuffix(QCoreApplication.translate("Widget", u" uS", None))
@@ -1448,14 +1368,12 @@ class Ui_Widget(object):
         self.chkConstCurrent.setText(QCoreApplication.translate("Widget", u"Constant Current", None))
         self.lblCCTarget.setText(QCoreApplication.translate("Widget", u"Target", None))
         self.leCCVal.setText(QCoreApplication.translate("Widget", u"10", None))
+        self.cmdScan.setText(QCoreApplication.translate("Widget", u"Scan", None))
         self.lblscanSPP.setText(QCoreApplication.translate("Widget", u"Samples / Pix", None))
         self.leSamples.setText(QCoreApplication.translate("Widget", u"10", None))
-        self.chkTimingMode.setText(QCoreApplication.translate("Widget", u"Use Accurate Timer", None))
-        self.spnTiminguS.setSuffix(QCoreApplication.translate("Widget", u" uS", None))
-        self.cmdScan.setText(QCoreApplication.translate("Widget", u"Scan", None))
-        self.cmdStartCont.setText(QCoreApplication.translate("Widget", u"Continuous Scan", None))
-        self.cmdStopCont.setText(QCoreApplication.translate("Widget", u"Stop Scan", None))
-        self.chkAutoSave.setText(QCoreApplication.translate("Widget", u"Auto Save", None))
+        self.cmdScanMulti.setText(QCoreApplication.translate("Widget", u"Scan Multi ", None))
+        self.lblRepeat.setText(QCoreApplication.translate("Widget", u"Repeat", None))
+        self.leMultiScanTimes.setText(QCoreApplication.translate("Widget", u"10", None))
         self.cmdSaveScan.setText(QCoreApplication.translate("Widget", u"Save", None))
         self.leSave.setText(QCoreApplication.translate("Widget", u"./images/image", None))
         self.tbLeft.setTabText(self.tbLeft.indexOf(self.tbScanning), QCoreApplication.translate("Widget", u"Scanning", None))
@@ -1467,11 +1385,11 @@ class Ui_Widget(object):
 #if QT_CONFIG(tooltip)
         self.cmdMotDown.setToolTip(QCoreApplication.translate("Widget", u"Move tip away from target", None))
 #endif // QT_CONFIG(tooltip)
-        self.cmdMotDown.setText(QCoreApplication.translate("Widget", u"Down", None))
+        self.cmdMotDown.setText(QCoreApplication.translate("Widget", u"Retract", None))
 #if QT_CONFIG(tooltip)
         self.cmdMotUp.setToolTip(QCoreApplication.translate("Widget", u"Move tip close to target", None))
 #endif // QT_CONFIG(tooltip)
-        self.cmdMotUp.setText(QCoreApplication.translate("Widget", u"Up", None))
+        self.cmdMotUp.setText(QCoreApplication.translate("Widget", u"Approach", None))
         self.cmdSend.setText(QCoreApplication.translate("Widget", u"Send", None))
         self.label.setText(QCoreApplication.translate("Widget", u"Color Palette : ", None))
         self.cmbColorPal.setItemText(0, QCoreApplication.translate("Widget", u"viridis", None))

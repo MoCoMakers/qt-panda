@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Z-Tip Resolution Calculator — Wedge/Clamshell Drive Chain</title>
+<style>
+:root{
+  --bg:#0f1419; --panel:#ffffff; --ink:#1b1f24; --muted:#5b6670;
+  --accent:#0072B2; --accent2:#D55E00; --ok:#199473; --warn:#c77b00;
+  --line:#e3e7eb; --code:#f4f6f8;
+}
+*{box-sizing:border-box}
+body{margin:0;background:#eef1f4;color:var(--ink);
+  font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+.wrap{max-width:1180px;margin:0 auto;padding:28px 18px 80px}
+header.hero{background:linear-gradient(135deg,#0f1419,#1f3a4d);color:#fff;
+  border-radius:16px;padding:30px 32px 26px;box-shadow:0 10px 30px rgba(15,20,25,.25)}
+header.hero .kicker{text-transform:uppercase;letter-spacing:.14em;font-size:12px;
+  color:#7fd1ff;margin:0 0 10px}
+header.hero h1{margin:0 0 10px;font-size:27px;line-height:1.2}
+header.hero .q{font-size:15.5px;color:#d7e3ec;max-width:820px;margin:8px 0 0}
+header.hero .meta{margin-top:14px;font-size:12.5px;color:#9fb3c1}
+header.hero a{color:#7fd1ff}
+.layout{display:grid;grid-template-columns:340px 1fr;gap:22px;margin-top:22px;align-items:start}
+@media(max-width:900px){.layout{grid-template-columns:1fr}}
+section{background:var(--panel);border:1px solid var(--line);border-radius:14px;
+  padding:20px 22px;box-shadow:0 2px 8px rgba(15,20,25,.05)}
+.controls{position:sticky;top:14px}
+h2{font-size:18px;margin:0 0 14px;padding-bottom:9px;border-bottom:2px solid var(--line)}
+h3{font-size:12.5px;color:var(--muted);margin:18px 0 8px;text-transform:uppercase;letter-spacing:.06em}
+.ctl{margin:11px 0}
+.ctl label{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;margin-bottom:3px}
+.ctl label .val{font-weight:700;color:var(--accent);font-variant-numeric:tabular-nums}
+.ctl input[type=range]{width:100%;accent-color:var(--accent);margin:0}
+.ctl .sub{font-size:11px;color:var(--muted)}
+.row{display:flex;gap:8px}
+.row>*{flex:1}
+select,input[type=number]{width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:7px;
+  font:inherit;font-size:13px;background:#fff;color:var(--ink)}
+.presets{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+.presets button,.linkbtn{cursor:pointer;border:1px solid #bfe0f5;background:#e7f3fb;color:var(--accent);
+  border-radius:999px;padding:4px 11px;font-size:12px;font-weight:600}
+.presets button:hover,.linkbtn:hover{background:#d3ebfa}
+.chk{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--muted);margin:8px 0}
+.chk input{accent-color:var(--accent)}
+
+.headline{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;margin-bottom:6px}
+.big{font-size:42px;font-weight:800;line-height:1;color:var(--ink);font-variant-numeric:tabular-nums}
+.big .u{font-size:19px;font-weight:600;color:var(--muted);margin-left:6px}
+.big.warnval{color:var(--accent2)}
+.big.okval{color:var(--ok)}
+.sub2{font-size:13px;color:var(--muted)}
+.pill{display:inline-block;border-radius:999px;padding:3px 10px;font-size:12px;font-weight:700}
+.pill.ok{background:#e2f5ee;color:var(--ok);border:1px solid #b7e6d5}
+.pill.warn{background:#fdf0e0;color:var(--warn);border:1px solid #f2d7ac}
+.pill.bad{background:#fbe7e2;color:var(--accent2);border:1px solid #f4c8bb}
+
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-top:16px}
+.stat{background:var(--code);border-radius:10px;padding:11px 13px;border:1px solid var(--line)}
+.stat .k{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.stat .v{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:2px}
+.stat .v small{font-size:12px;font-weight:600;color:var(--muted)}
+
+canvas{width:100%;display:block;border-radius:10px}
+.figwrap{margin-top:6px}
+figcaption{font-size:12.5px;color:var(--muted);margin-top:8px}
+
+.chain{margin-top:6px}
+.chain .stg{display:grid;grid-template-columns:150px 1fr 150px;gap:12px;align-items:center;
+  padding:9px 0;border-bottom:1px dashed var(--line)}
+.chain .stg:last-child{border-bottom:0}
+.chain .name{font-size:13px}
+.chain .name b{display:block}
+.chain .name span{font-size:11px;color:var(--muted)}
+.chain .bar{height:16px;background:#eef1f4;border-radius:4px;overflow:hidden;position:relative}
+.chain .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),#4aa3d6);border-radius:4px}
+.chain .amt{text-align:right;font-variant-numeric:tabular-nums;font-weight:700;font-size:14px}
+.chain .amt small{color:var(--muted);font-weight:600;font-size:11px}
+
+.eq{background:var(--code);border-left:4px solid var(--accent);border-radius:6px;
+  padding:10px 14px;margin:8px 0;font-family:"Cambria Math","Times New Roman",Georgia,serif;font-size:16px}
+.eq .desc{display:block;font-family:-apple-system,system-ui,sans-serif;font-size:12px;color:var(--muted);margin-top:4px}
+.note{font-size:13px;color:var(--muted);background:#f7fafc;border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin-top:12px}
+.note b{color:var(--ink)}
+footer{color:var(--muted);font-size:12px;text-align:center;margin-top:26px}
+code{background:var(--code);padding:1px 5px;border-radius:4px;font-size:13px}
+</style></head>
+<body><div class="wrap">
+
+<header class="hero">
+  <p class="kicker">qt-panda research harness · interactive</p>
+  <h1>Z-Tip Resolution Calculator — Wedge / Clamshell Drive Chain</h1>
+  <p class="q">Drag any knob and watch the tip move. This is the live version of the
+    <i>“Tip&nbsp;Z per Motor Step”</i> report: the same four-stage chain
+    (motor&nbsp;→ pinion/rack → wedge → lever), computed in your browser. Explore tip length,
+    plate/lever geometry, wedge angle &amp; run, pinion size, and an auxiliary
+    <b>slow-down gearbox</b> to see what it takes to reach 1&nbsp;nm/step.</p>
+  <p class="meta">Physics mirrors <code>physics/wedge_lever.py</code> · defaults = as-built WedgeDesign&nbsp;v37 (2026-07-07, session&nbsp;8) · fully standalone, no network</p>
+</header>
+
+<div class="layout">
+
+  <!-- ============ CONTROLS ============ -->
+  <section class="controls">
+    <h2>Parameters</h2>
+
+    <div class="presets" id="presets">
+      <button data-preset="asbuilt">As-built v37</button>
+      <button data-preset="lead">M3 leadscrew</button>
+      <button data-preset="onenm">Hit 1 nm/step</button>
+    </div>
+
+    <h3>Tip &amp; lever geometry</h3>
+    <div class="ctl">
+      <label>Piezo lever r<sub>p</sub> <span>(pin → piezo, ≈ plate reach)</span><span class="val"><span id="rp_v"></span> mm</span></label>
+      <input type="range" id="rp" min="20" max="140" step="0.5">
+    </div>
+    <div class="ctl">
+      <label>Lip offset δ <span>(lip beyond piezo)</span><span class="val"><span id="doff_v"></span> mm</span></label>
+      <input type="range" id="doff" min="0" max="80" step="0.5">
+      <div class="sub">→ lip arm d<sub>w</sub> = r<sub>p</sub> + δ = <b id="dw_v"></b> mm &nbsp;(pin → wedge/lip contact)</div>
+    </div>
+    <div class="ctl">
+      <label>Tip / collet standoff c <span>(below piezo)</span><span class="val"><span id="c_v"></span> mm</span></label>
+      <input type="range" id="c" min="0" max="40" step="0.5">
+    </div>
+    <div class="ctl">
+      <label>Lid opening φ <span>(at contact ≈1.67°)</span><span class="val"><span id="phi_v"></span> °</span></label>
+      <input type="range" id="phi" min="0" max="30" step="0.1">
+    </div>
+
+    <h3>Wedge</h3>
+    <div class="ctl">
+      <label>Wedge angle θ<sub>w</sub><span class="val"><span id="theta_v"></span> °</span></label>
+      <input type="range" id="theta" min="1" max="20" step="0.05">
+      <div class="sub">tan θ<sub>w</sub> = <b id="tan_v"></b></div>
+    </div>
+    <div class="ctl">
+      <label>Wedge run / stroke <span>(full travel)</span><span class="val"><span id="run_v"></span> mm</span></label>
+      <input type="range" id="run" min="5" max="60" step="0.5">
+    </div>
+    <div class="presets" id="washers"></div>
+
+    <h3>Drive</h3>
+    <div class="ctl">
+      <select id="drive">
+        <option value="pinion">Rack &amp; pinion (module · teeth)</option>
+        <option value="lead">Leadscrew (mm / rev)</option>
+      </select>
+    </div>
+    <div id="pinionCtls">
+      <div class="row">
+        <div class="ctl"><label>Module m<span class="val"><span id="m_v"></span></span></label>
+          <input type="range" id="m" min="0.3" max="3" step="0.1"></div>
+        <div class="ctl"><label>Teeth z<span class="val"><span id="z_v"></span></span></label>
+          <input type="range" id="z" min="6" max="40" step="1"></div>
+      </div>
+      <div class="sub">pinion pitch dia = m·z = <b id="pd_v"></b> mm → <b id="mmrev_v"></b> mm / rev</div>
+    </div>
+    <div id="leadCtls" style="display:none">
+      <div class="ctl"><label>Leadscrew lead<span class="val"><span id="lead_v"></span> mm/rev</span></label>
+        <input type="range" id="lead" min="0.25" max="8" step="0.25"></div>
+    </div>
+
+    <h3>Stepper &amp; slow-down gearbox</h3>
+    <div class="ctl">
+      <label>Motor half-steps / rev N<span class="val"><span id="N_v"></span></span></label>
+      <input type="range" id="N" min="200" max="8192" step="1">
+      <div class="sub"><span class="linkbtn" data-N="4096">4096 nominal</span> <span class="linkbtn" data-N="4075.77">4075.77 true</span> <span class="linkbtn" data-N="2048">2048 full-step×half</span></div>
+    </div>
+    <div class="ctl">
+      <label>Auxiliary reduction G <span>(slow-down gearbox, :1)</span><span class="val"><span id="G_v"></span> : 1</span></label>
+      <input type="range" id="G" min="1" max="1000" step="1">
+      <div class="sub">extra gear train between motor and pinion — divides travel per step</div>
+    </div>
+  </section>
+
+  <!-- ============ RESULTS ============ -->
+  <div>
+    <section>
+      <h2>Tip motion per motor step</h2>
+      <div class="headline">
+        <div>
+          <div class="big" id="dztip"><span id="dztip_n"></span><span class="u">nm&nbsp;/&nbsp;step</span></div>
+          <div class="sub2">vertical approach at the tip · <span id="verdict"></span></div>
+        </div>
+        <div>
+          <div class="sub2">lateral (Abbe) walk</div>
+          <div style="font-size:22px;font-weight:700" id="dxtip"></div>
+        </div>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><div class="k">Stick travel s / step</div><div class="v" id="s_out"></div></div>
+        <div class="stat"><div class="k">Lip lift / step</div><div class="v" id="dzw_out"></div></div>
+        <div class="stat"><div class="k">Lid rotation / step</div><div class="v" id="dphi_out"></div></div>
+        <div class="stat"><div class="k">Lever ratio r<sub>p</sub>/d<sub>w</sub></div><div class="v" id="lr_out"></div></div>
+        <div class="stat"><div class="k">Lateral / Z (c/r<sub>p</sub>)</div><div class="v" id="abbe_out"></div></div>
+        <div class="stat"><div class="k">vs 1 nm window</div><div class="v" id="win_out"></div></div>
+        <div class="stat"><div class="k">Full stroke</div><div class="v" id="stroke_out"></div></div>
+        <div class="stat"><div class="k">Full tip range</div><div class="v" id="range_out"></div></div>
+        <div class="stat"><div class="k">Steps / piezo 15–50 µm</div><div class="v" id="reach_out"></div></div>
+        <div class="stat"><div class="k">Tip travel / motor rev</div><div class="v" id="perrev_out"></div></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>The reduction chain, one step</h2>
+      <div class="chain" id="chain"></div>
+      <div class="eq">Δz<sub>tip</sub> = s · tan θ<sub>w</sub> · (r<sub>p</sub>cos φ + c·sin φ) / d<sub>w</sub>
+        <span class="desc">s = (drive mm/rev) / (N · G) · 10<sup>6</sup> nm — the only term the drivetrain changes; everything right of it is pure geometry.</span></div>
+    </section>
+
+    <section>
+      <h2>Geometry — the lid rests on the wedge</h2>
+      <div class="figwrap"><canvas id="schem" width="1040" height="440"></canvas></div>
+      <figcaption>Side view (x&nbsp;to&nbsp;scale, vertical exaggerated). The lid lip <b>rides the wedge slope</b>: the wedge height under the lip <i>is</i> what sets the opening φ. Drag φ up to the 1.67° contact pose (crest under the lip) and watch the wedge slide in and the tip lift away from the sample — that lift ÷ per step is the Z resolution. r<sub>p</sub>, δ, c, θ<sub>w</sub>, run all reshape it; φ is bounded by the wedge (φ<sub>max</sub> = asin(run·tanθ<sub>w</sub>/d<sub>w</sub>)).</figcaption>
+    </section>
+
+    <section>
+      <h2>Slow-down gearbox explorer</h2>
+      <div class="figwrap"><canvas id="sens" width="1040" height="360"></canvas></div>
+      <figcaption>Tip Z per step vs auxiliary reduction G (log–log), everything else fixed. Dot = current config.
+        Lines: 1&nbsp;nm tunneling window, and the as-built 620&nbsp;nm.</figcaption>
+      <div class="note" id="target"></div>
+    </section>
+  </div>
+</div>
+
+<footer>
+  Standalone calculator · qt-panda wedge-assembly workstream · mirrors
+  <code>docs/ai/research-harness/physics/wedge_lever.py</code> and the
+  <code>wedge-lever-gearing</code> report.
+</footer>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const PI = Math.PI;
+
+// --- Glarks beveled-washer kit (from off-the-shelf-wedge-washers.md) ---------
+const WASHERS = {
+  "M8":{a:7.70,run:17.0}, "M10":{a:9.06,run:21.3}, "M12":{a:7.26,run:27.5},
+  "M16":{a:8.68,run:33.4}, "M18":{a:9.39,run:39.3}, "M20":{a:9.65,run:40.0}
+};
+
+// --- presets -----------------------------------------------------------------
+// as-built v37: rp 76.26, dw 120.15 -> offset 43.89; wedge tan 3.5/27.5=7.2532deg run 27.5
+// φ defaults to the 1.67° contact pose (wedge fully inserted, crest under the lip) so
+// the geometry reads correctly; set φ=0 for the report's closure values (619.6 nm, 65.0 Abbe).
+const P = {
+  asbuilt:{rp:76.26, doff:43.89, c:8, phi:1.669, theta:7.2532, run:27.5,
+           drive:"pinion", m:1, z:10, lead:0.5, N:4096, G:1},
+  lead:{rp:76.26, doff:43.89, c:8, phi:1.669, theta:7.2532, run:27.5,
+        drive:"lead", m:1, z:10, lead:0.5, N:4096, G:1},
+  onenm:{rp:76.26, doff:43.89, c:8, phi:1.669, theta:7.2532, run:27.5,
+         drive:"pinion", m:1, z:10, lead:0.5, N:4096, G:620}
+};
+
+const IDS = ["rp","doff","c","phi","theta","run","m","z","lead","N","G"];
+function setState(s){
+  IDS.forEach(k=>{ if(k in s) $(k).value = s[k]; });
+  if("drive" in s) $("drive").value = s.drive;
+  syncDrive(); update();
+}
+
+function syncDrive(){
+  const lead = $("drive").value==="lead";
+  $("leadCtls").style.display = lead?"block":"none";
+  $("pinionCtls").style.display = lead?"none":"block";
+}
+
+// --- core physics (mirror of wedge_lever.py step_gearing) --------------------
+function model(){
+  const rp   = +$("rp").value;
+  const doff = +$("doff").value;
+  const dw   = rp + doff;
+  const c    = +$("c").value;
+  const phi  = +$("phi").value * PI/180;
+  const th   = +$("theta").value * PI/180;
+  const run  = +$("run").value;
+  const N    = +$("N").value;
+  const G    = Math.max(1e-9, +$("G").value);
+  const drive= $("drive").value;
+  const m    = +$("m").value;
+  const z    = +$("z").value;
+  const lead = +$("lead").value;
+
+  const mmPerRev = drive==="lead" ? lead : z*PI*m;
+  const s_nm  = mmPerRev*1e6/(N*G);                 // stick travel per step (nm)
+  const dzw   = s_nm*Math.tan(th);                  // lip lift per step (nm)
+  const dphi  = dzw/(dw*1e6);                        // rad per step
+  const dztip = dphi*(rp*Math.cos(phi)+c*Math.sin(phi))*1e6;
+  const dxtip = dphi*(c*Math.cos(phi)-rp*Math.sin(phi))*1e6;
+
+  const rangeMm = run*Math.tan(th)*(rp/dw);          // full tip Z over the stroke
+  const strokeSteps = run*1e6/s_nm;                  // steps to run the wedge end-to-end
+  const perRev = dztip*N*G;                          // tip nm per motor rev
+
+  return {rp,dw,doff,c,phi,th,run,N,G,drive,m,z,lead,mmPerRev,
+          s_nm,dzw,dphi,dztip,dxtip,rangeMm,strokeSteps,perRev};
+}
+
+// --- formatting --------------------------------------------------------------
+const nf = (x,d=2)=> (isFinite(x)?Number(x):0).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
+function nmPretty(nm){
+  const a=Math.abs(nm);
+  if(a>=1e6) return nf(nm/1e6,3)+" mm";
+  if(a>=1e3) return nf(nm/1e3,3)+" µm";
+  return nf(nm,a<10?3:1)+" nm";
+}
+
+// --- render ------------------------------------------------------------------
+function update(){
+  const r = model();
+  // echo control values
+  $("rp_v").textContent=nf(r.rp,1); $("doff_v").textContent=nf(r.doff,1);
+  $("dw_v").textContent=nf(r.dw,2); $("c_v").textContent=nf(r.c,1);
+  $("phi_v").textContent=nf(r.phi*180/PI,2); $("theta_v").textContent=nf(r.th*180/PI,2);
+  $("tan_v").textContent=nf(Math.tan(r.th),5); $("run_v").textContent=nf(r.run,1);
+  $("m_v").textContent=nf(r.m,1); $("z_v").textContent=r.z;
+  $("pd_v").textContent=nf(r.m*r.z,1); $("mmrev_v").textContent=nf(r.z*PI*r.m,4);
+  $("lead_v").textContent=nf(r.lead,2);
+  $("N_v").textContent=nf(r.N,r.N%1?2:0); $("G_v").textContent=nf(r.G,0);
+
+  // headline
+  $("dztip_n").textContent = nmPretty(r.dztip).replace(/ (nm|µm|mm)$/,"");
+  const unit = nmPretty(r.dztip).match(/(nm|µm|mm)$/)[0];
+  document.querySelector("#dztip .u").innerHTML = unit+"&nbsp;/&nbsp;step";
+  $("dxtip").textContent = nmPretty(r.dxtip)+" / step";
+
+  const dz = r.dztip;
+  const cls = dz<=1.5 ? "okval" : dz<=50 ? "" : "warnval";
+  $("dztip").className = "big "+cls;
+  let verdict;
+  if(dz<=1.5) verdict = '<span class="pill ok">≈ tunneling scale</span> single steps land inside/near the 1 nm window';
+  else if(dz<=50) verdict = '<span class="pill warn">fine-approach class</span> comparable to a longboard stack (~27 nm)';
+  else verdict = '<span class="pill bad">coarse approach</span> '+nf(dz/1,0)+'× the 1 nm window — hand off the last gap to the piezo';
+  $("verdict").innerHTML = verdict;
+
+  // stats
+  $("s_out").innerHTML   = nmPretty(r.s_nm);
+  $("dzw_out").innerHTML = nmPretty(r.dzw);
+  $("dphi_out").innerHTML= nf(r.dphi*1e6,3)+' <small>µrad</small>';
+  $("lr_out").textContent= nf(r.rp/r.dw,4);
+  $("abbe_out").textContent = nf(r.c/r.rp*100,1)+" %";
+  $("win_out").innerHTML = (r.dztip>=1? nf(r.dztip,0)+'× coarser' : nf(1/r.dztip,1)+'× finer');
+  $("stroke_out").innerHTML = nf(r.strokeSteps,0)+' <small>steps</small>';
+  $("range_out").innerHTML  = nf(r.rangeMm,3)+' <small>mm</small>';
+  const s15=15e3/r.dztip, s50=50e3/r.dztip;
+  $("reach_out").innerHTML  = nf(s15,0)+'–'+nf(s50,0)+' <small>steps</small>';
+  $("perrev_out").innerHTML = nmPretty(r.perRev);
+
+  drawChain(r); drawSchem(r); drawSens(r); drawTarget(r);
+}
+
+// --- chain bars --------------------------------------------------------------
+function drawChain(r){
+  const rows=[
+    {n:"1 · Motor step", s:"1 / (N·G) rev", v:r.s_nm/(r.N*r.G)*1, raw:"—", show:false},
+    {n:"2 · Stick travel s", s:"pinion/lead ÷ N·G", v:r.s_nm},
+    {n:"3 · Lip lift", s:"× tan θ<sub>w</sub>", v:r.dzw},
+    {n:"4 · Tip Z", s:"× (r<sub>p</sub>/d<sub>w</sub>)", v:r.dztip},
+    {n:"4b · Lateral (Abbe)", s:"× (c/d<sub>w</sub>)", v:Math.abs(r.dxtip)}
+  ].filter(x=>x.show!==false);
+  const max=Math.max(...rows.map(x=>x.v));
+  const logmin=1e-2;
+  const w = x => Math.max(2, 100*(Math.log10(Math.max(x,logmin))-Math.log10(logmin))/(Math.log10(max)-Math.log10(logmin)));
+  $("chain").innerHTML = rows.map(x=>
+    `<div class="stg"><div class="name"><b>${x.n}</b><span>${x.s}</span></div>`+
+    `<div class="bar"><i style="width:${w(x.v)}%"></i></div>`+
+    `<div class="amt">${nmPretty(x.v)}<br><small>per step</small></div></div>`).join("");
+}
+
+// --- geometry schematic (lid rests ON the wedge slope) -----------------------
+function drawSchem(r){
+  const cv=$("schem"), x=cv.getContext("2d");
+  const W=cv.width,H=cv.height; x.clearRect(0,0,W,H);
+  const padL=72,padR=64, usable=W-padL-padR;
+  const scX=usable/((r.dw+r.run)*1.06);      // px/mm horizontal (room for outboard crest)
+  const scY=14;                              // px/mm vertical, exaggerated (labelled)
+  const baseY=H-70, pivotY=Math.round(H*0.40);   // hinge & wedge-datum level (fixed)
+  const phi=r.phi, sp=Math.sin(phi), cp=Math.cos(phi), th=r.th, tanth=Math.tan(th);
+  const LX=a=>padL+a*cp*scX, LY=a=>pivotY-a*sp*scY;   // a point on the lid at arm a
+
+  // static lower jaw
+  x.strokeStyle="#c3ccd4"; x.lineWidth=2; x.beginPath(); x.moveTo(28,baseY); x.lineTo(W-20,baseY); x.stroke();
+  hatch(x,28,W-20,baseY,"#c3ccd4");
+
+  // wedge geometry: lip lift = d_w·sinφ sets how far the wedge is inserted
+  const liftmm=r.dw*sp, risemm=r.run*tanth;
+  const overRange = liftmm>risemm+1e-6;      // φ beyond what the wedge can supply
+  const insertion=Math.max(0,Math.min(liftmm/tanth, r.run));
+  const Cx=LX(r.dw), Cy=LY(r.dw);            // lip contact, ON the lid
+  const thinX=Cx-insertion*cp*scX, crestX=thinX+r.run*cp*scX;
+  const crestTopY=pivotY-risemm*scY;
+  // pedestal (fixed channel/plate the wedge slides on)
+  const wl=Math.min(thinX,crestX), ww=Math.abs(crestX-thinX);
+  x.fillStyle="#e6eaee"; x.fillRect(wl,pivotY,ww,baseY-pivotY);
+  x.strokeStyle="#cdd5db"; x.lineWidth=1; x.strokeRect(wl,pivotY,ww,baseY-pivotY);
+  x.fillStyle="#9aa7b1"; x.font="10px system-ui"; x.textAlign="center"; x.fillText("channel / plate",(thinX+crestX)/2,baseY-7);
+  // wedge ramp — thin edge inboard, crest outboard; lid lip sits on the slope
+  x.beginPath(); x.moveTo(thinX,pivotY); x.lineTo(crestX,crestTopY); x.lineTo(crestX,pivotY); x.closePath();
+  const wg=x.createLinearGradient(thinX,0,crestX,0); wg.addColorStop(0,"#cad4dc"); wg.addColorStop(1,"#93a1ab");
+  x.fillStyle=wg; x.fill(); x.strokeStyle="#6b7883"; x.lineWidth=1.5; x.stroke();
+  x.fillStyle="#5b6670"; x.font="11px system-ui"; x.textAlign="center";
+  x.fillText("wedge θ="+nf(th*180/PI,1)+"°",(thinX+crestX)/2, crestTopY-7);
+  // push stick butts the crest, drives it inboard to insert
+  x.strokeStyle=getCss('--accent2'); x.lineWidth=2.5; arrow(x, crestX+40,(crestTopY+pivotY)/2, crestX+8,(crestTopY+pivotY)/2);
+  x.fillStyle=getCss('--accent2'); x.font="10px system-ui"; x.textAlign="left"; x.fillText("push stick",crestX+8,(crestTopY+pivotY)/2-9);
+
+  // lid / lever
+  const HX=LX(0),HY=LY(0), end=r.dw*1.06;
+  x.strokeStyle=getCss('--accent'); x.lineWidth=6; x.lineCap="round";
+  x.beginPath(); x.moveTo(HX,HY); x.lineTo(LX(end),LY(end)); x.stroke(); x.lineCap="butt";
+  x.fillStyle="#1b1f24"; x.beginPath(); x.arc(HX,HY,6,0,7); x.fill();
+  x.fillStyle="#5b6670"; x.font="12px system-ui"; x.textAlign="left"; x.fillText("hinge",HX-4,HY-11);
+  x.fillStyle=getCss('--accent'); x.fillText("lid / lever",LX(r.dw*0.42),LY(r.dw*0.42)-11);
+
+  // lip contact marker + lift callout
+  x.setLineDash([3,3]); x.strokeStyle=getCss('--accent2'); x.lineWidth=1;
+  x.beginPath(); x.moveTo(Cx,Cy); x.lineTo(Cx,pivotY); x.stroke(); x.setLineDash([]);
+  x.fillStyle=overRange?getCss('--accent2'):getCss('--accent2'); x.beginPath(); x.arc(Cx,Cy,5,0,7); x.fill();
+  x.fillStyle="#5b6670"; x.font="11px system-ui"; x.textAlign="left";
+  x.fillText("lift = d_w·sinφ = "+nf(liftmm,2)+" mm", Cx+9, (Cy+pivotY)/2+4);
+  if(overRange){ x.fillStyle=getCss('--accent2'); x.fillText("φ beyond wedge range (max "+nf(Math.asin(Math.min(1,risemm/r.dw))*180/PI,2)+"°)", Cx+9, Cy-9); }
+
+  // piezo + collet/tip, hanging perpendicular under the lid
+  const PX=LX(r.rp),PY=LY(r.rp), nx=sp, ny=cp;
+  const TX=PX+nx*r.c*scY, TY=PY+ny*r.c*scY;
+  x.strokeStyle="#7a5c00"; x.lineWidth=3; x.beginPath(); x.moveTo(PX,PY); x.lineTo(TX,TY); x.stroke();
+  x.fillStyle="#b58900"; x.fillRect(PX-12,PY-9,24,9);
+  x.fillStyle="#7a5c00"; x.font="11px system-ui"; x.textAlign="center"; x.fillText("piezo",PX,PY-13);
+  x.fillStyle=getCss('--accent2'); x.beginPath(); x.arc(TX,TY,4.5,0,7); x.fill(); x.fillText("tip",TX,TY+15);
+
+  // fixed sample surface + tunnelling gap (grows as the lid opens)
+  const sampleY=pivotY+r.c*scY+12;
+  x.strokeStyle="#199473"; x.lineWidth=3; x.beginPath(); x.moveTo(TX-42,sampleY); x.lineTo(TX+42,sampleY); x.stroke();
+  hatch(x,TX-42,TX+42,sampleY,"#8fc9b8");
+  x.fillStyle="#199473"; x.font="10px system-ui"; x.textAlign="center"; x.fillText("sample",TX,sampleY+13);
+  x.setLineDash([2,2]); x.strokeStyle="#199473"; x.beginPath(); x.moveTo(TX,TY); x.lineTo(TX,sampleY); x.stroke(); x.setLineDash([]);
+
+  // dimensions (x, to scale)
+  x.setLineDash([4,4]);
+  dim(x, HX, baseY+30, PX, baseY+30, "r_p = "+nf(r.rp,1)+" mm", getCss('--accent'));
+  dim(x, HX, baseY+50, Cx, baseY+50, "d_w = "+nf(r.dw,1)+" mm", "#5b6670");
+  x.setLineDash([]);
+  // header note
+  x.fillStyle="#9aa7b1"; x.font="11px system-ui"; x.textAlign="right";
+  x.fillText("x to scale · vertical ~"+nf(scY/scX,1)+"× · φ="+nf(phi*180/PI,2)+"°", W-14, 19);
+}
+function dim(x,x1,y,x2,y2,label,col){
+  x.strokeStyle=col||"#b0bac2"; x.lineWidth=1; x.beginPath(); x.moveTo(x1,y); x.lineTo(x2,y2); x.stroke();
+  x.beginPath(); x.moveTo(x1,y-4); x.lineTo(x1,y+4); x.moveTo(x2,y2-4); x.lineTo(x2,y2+4); x.stroke();
+  x.fillStyle=col||"#5b6670"; x.font="12px system-ui"; x.textAlign="center";
+  x.fillText(label,(x1+x2)/2,y-6); x.textAlign="left";
+}
+function hatch(x,x1,x2,y,col){
+  x.strokeStyle=col||"#c3ccd4"; x.lineWidth=1;
+  for(let gx=x1; gx<x2; gx+=9){ x.beginPath(); x.moveTo(gx,y); x.lineTo(gx-6,y+7); x.stroke(); }
+}
+function arrow(x,x1,y1,x2,y2){
+  x.beginPath(); x.moveTo(x1,y1); x.lineTo(x2,y2); x.stroke();
+  const a=Math.atan2(y2-y1,x2-x1);
+  x.beginPath(); x.moveTo(x2,y2);
+  x.lineTo(x2-8*Math.cos(a-0.4),y2-8*Math.sin(a-0.4));
+  x.moveTo(x2,y2); x.lineTo(x2-8*Math.cos(a+0.4),y2-8*Math.sin(a+0.4)); x.stroke();
+}
+
+// --- sensitivity: dz_tip vs G ------------------------------------------------
+function drawSens(r){
+  const cv=$("sens"), x=cv.getContext("2d");
+  const W=cv.width,H=cv.height; x.clearRect(0,0,W,H);
+  const L=64,R=20,T=20,B=44, w=W-L-R, h=H-T-B;
+  // dz at G=1 (everything else fixed) then scales as 1/G
+  const base = r.dztip*r.G;             // dz at G=1
+  const gmin=1, gmax=10000, ymin=0.05, ymax=Math.max(base*1.3, 1000);
+  const GX = g => L + w*(Math.log10(g)-Math.log10(gmin))/(Math.log10(gmax)-Math.log10(gmin));
+  const GY = y => T + h*(1-(Math.log10(y)-Math.log10(ymin))/(Math.log10(ymax)-Math.log10(ymin)));
+  // grid + axis labels
+  x.strokeStyle="#eef1f4"; x.fillStyle="#8a97a2"; x.font="11px system-ui"; x.lineWidth=1;
+  [1,10,100,1000,10000].forEach(g=>{ x.beginPath(); x.moveTo(GX(g),T); x.lineTo(GX(g),T+h); x.stroke();
+    x.textAlign="center"; x.fillText(g+":1",GX(g),T+h+16); });
+  [0.1,1,10,100,1000].forEach(y=>{ if(y<ymin||y>ymax)return; x.strokeStyle="#eef1f4"; x.beginPath();
+    x.moveTo(L,GY(y)); x.lineTo(L+w,GY(y)); x.stroke(); x.fillStyle="#8a97a2"; x.textAlign="right";
+    x.fillText(y>=1?y+" nm":y+"", L-6,GY(y)+4); });
+  x.textAlign="center"; x.fillStyle="#5b6670";
+  x.fillText("auxiliary reduction G", L+w/2, H-6);
+  // reference lines
+  ref(x,GY(1),L,w,getCss('--ok'),"1 nm tunneling window");
+  if(620<=ymax&&620>=ymin) ref(x,GY(620),L,w,"#c3ccd4","as-built 620 nm");
+  // curve
+  x.strokeStyle=getCss('--accent'); x.lineWidth=2.5; x.beginPath();
+  for(let i=0;i<=200;i++){ const g=Math.pow(10, Math.log10(gmin)+(Math.log10(gmax)-Math.log10(gmin))*i/200);
+    const y=base/g; const Y=Math.min(Math.max(y,ymin),ymax);
+    const X=GX(g); i?x.lineTo(X,GY(Y)):x.moveTo(X,GY(Y)); }
+  x.stroke();
+  // current dot
+  const cx=GX(Math.min(Math.max(r.G,gmin),gmax)), cy=GY(Math.min(Math.max(r.dztip,ymin),ymax));
+  x.fillStyle=getCss('--accent2'); x.beginPath(); x.arc(cx,cy,6,0,7); x.fill();
+  x.fillStyle="#1b1f24"; x.font="bold 12px system-ui"; x.textAlign="left";
+  x.fillText("G="+nf(r.G,0)+" → "+nmPretty(r.dztip),Math.min(cx+10,L+w-140),cy-8);
+}
+function ref(x,y,L,w,col,label){
+  x.setLineDash([6,4]); x.strokeStyle=col; x.lineWidth=1.5; x.beginPath();
+  x.moveTo(L,y); x.lineTo(L+w,y); x.stroke(); x.setLineDash([]);
+  x.fillStyle=col; x.font="11px system-ui"; x.textAlign="left"; x.fillText(label,L+6,y-4);
+}
+
+// --- slow-down target readout ------------------------------------------------
+function drawTarget(r){
+  const target=1.0; // nm/step
+  const baseG1 = r.dztip*r.G;                 // dz at G=1
+  const Greq = baseG1/target;                 // total aux reduction to reach 1 nm
+  const extra = Greq/r.G;                      // beyond current G
+  let realize;
+  if(Greq<=8) realize="a single spur pair (e.g. "+Math.round(Greq*12)+"T ÷ 12T pinion).";
+  else if(Greq<=120) realize="a compact 2-stage spur train or a planetary set (√"+nf(Greq,0)+" ≈ "+nf(Math.sqrt(Greq),1)+":1 per stage).";
+  else realize="a worm drive (a 1-start worm on a "+Math.round(Greq)+"T wheel is "+Math.round(Greq)+":1 in one stage) or a multi-stage / harmonic gearbox.";
+  $("target").innerHTML =
+    `<b>To reach 1 nm/step</b> with the current geometry and drive you need a total auxiliary reduction of `+
+    `<b>G ≈ ${nf(Greq,0)} : 1</b> `+
+    (r.G>1?`(you're at ${nf(r.G,0)}:1 → another <b>${nf(extra,1)}×</b>). `:`. `)+
+    `Realize it with ${realize} `+
+    `A leadscrew swap alone (0.5 mm/rev, module-1 pinion path) buys ~63× — the <i>M3 leadscrew</i> preset lands at ≈9.9 nm/step, `+
+    `so the last ~10× to 1 nm still wants a small gearbox or a finer lead.`;
+}
+
+// --- utils -------------------------------------------------------------------
+function getCss(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+
+// --- wiring ------------------------------------------------------------------
+IDS.forEach(id=> $(id).addEventListener("input",update));
+$("drive").addEventListener("change",()=>{syncDrive();update();});
+document.querySelectorAll("#presets button").forEach(b=>
+  b.addEventListener("click",()=>setState(P[b.dataset.preset])));
+document.querySelectorAll("[data-N]").forEach(b=>
+  b.addEventListener("click",()=>{ $("N").value=b.dataset.N; update(); }));
+// washer chips
+$("washers").innerHTML = Object.keys(WASHERS).map(k=>`<button data-w="${k}">${k} · ${WASHERS[k].a}°</button>`).join("");
+$("washers").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
+  const wsh=WASHERS[b.dataset.w]; $("theta").value=wsh.a; $("run").value=wsh.run; update();
+}));
+
+// init
+setState(P.asbuilt);
+</script>
+</body></html>
