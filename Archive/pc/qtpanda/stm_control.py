@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from collections import deque
 import time
 import logging
+import threading
 
 logger = logging.getLogger("stm")
 logger.setLevel(logging.DEBUG)
@@ -29,16 +30,36 @@ class STM_Status:
 
     @staticmethod
     def from_list(values):
-        return STM_Status(bias=values[0],
-                          dac_z=values[1],
-                          dac_x=values[2],
-                          dac_y=values[3],
-                          adc=values[4],
-                          steps=values[5],
-                          is_approaching=bool(values[6]),
-                          is_const_current=bool(values[7]),
-                          is_scanning=bool(values[8]),
-                          time_millis=values[9])
+        return STM_Status(
+            bias=values[0],
+            dac_z=values[1],
+            dac_x=values[2],
+            dac_y=values[3],
+            adc=values[4],
+            steps=values[5],
+            is_approaching=bool(values[6]),
+            is_const_current=bool(values[7]),
+            is_scanning=bool(values[8]),
+            time_millis=values[9]
+        )
+
+    @staticmethod
+    def parse_line(line: str):
+
+        line = line.strip()
+        if not line.startswith("STAT:"):
+            raise ValueError("Invalid STM status line")
+
+        payload = line[5:]
+        parts = payload.split(",")
+        if len(parts) != 10:
+            raise ValueError(f"Expected 10 fields, got {len(parts)}")
+
+        values = [int(x) for x in parts]
+
+        return STM_Status.from_list(values)
+
+
 
     @staticmethod
     def adc_to_amp(adc: int):
@@ -68,7 +89,7 @@ X: {}
 Y: {} 
 ADC: {} 
 STEPS: {}
-Appoaching: {} 
+Approaching: {}
 ConstCurrent: {} 
 Scan: {}  
 Time: {}""".format(self.bias, self.dac_z, self.dac_x, self.dac_y, self.adc, self.steps, self.is_approaching,  self.is_const_current, self.is_scanning, self.time_millis)
@@ -83,29 +104,54 @@ class STM(object):
 
         self.status = STM_Status()
         self.hist_length = 1000
-        self.history = deque()
+        #self.history = deque()
         self.scan_adc = None
         self.scan_dacz = None
         self.scan_noise = None
+        self.receiving = False # is the thread running to listen
+
+        self._cb = None # callback
+        #pausing the RX thread:
+        self.rx_pause_request = False
+        self.rx_paused = False
+        self.serial_lock = threading.Lock()
+
 
         self.scan_config = [0, 100, 10, 0, 100, 10]
         self.scan_adc = np.ones([512, 512], dtype=np.float32)
         self.scan_dacz = np.ones([512, 512], dtype=np.float32)
         self.scan_noise = np.ones([512, 512], dtype=np.float32)
+        self.history = deque(maxlen=self.hist_length)
 
-    def open(self, device):
+    def open(self, device): # start the data receive
         self.stm_serial = serial.Serial(device, 921600, timeout=1) # 921600 # 115200
         self.is_opened = True
 
+        threading.Thread(
+            target=self.receive_data,
+            daemon=True
+        ).start()
+
+    def set_done_callback(self, cb):
+        self._cb = cb;
+        print("callback set")
+
+    def pause_receive_thread(self, timeout=1.0):
+        self.rx_pause_request = True
+        start = time.time()
+        while not self.rx_paused:
+            if time.time() - start > timeout:
+                raise TimeoutError("Failed to pause receive thread")
+            time.sleep(0.001)
+
+    def resume_receive_thread(self):
+        self.rx_pause_request = False
+
     def get_status(self):
-        if self.busy:
-            return
         if self.is_opened:
-            if self.busy:
-                print('busy')
-                return self.history[-1]
             try:
                 self.send_cmd('GSTS')
+<<<<<<<< HEAD:Archive/pc/qtpanda/stm_control.py
                 status_str = self.stm_serial.readline().decode(errors='ignore').strip()
                 #logger.info(f"RX  {status_str}")
 
@@ -127,20 +173,28 @@ class STM(object):
                 # No parseable reply this cycle; keep the last known status
                 # instead of crashing or spamming the console.
                 return self.history[-1] if self.history else self.status
+========
+            except:
+                print('no response')
+                #return self.history[-1]
+                if len(self.history) > 0:
+                    return self.history[-1]
+
+                return STM_Status()
+>>>>>>>> e0771271b6c592e6a57bffd02c14e5742fb27295:software/pc/qtpanda/stm_control.py
         else:
             self.status = STM_Status()
-        self.history.append(self.status)
-        if len(self.history) > self.hist_length:
-            self.history.popleft()
-
         return self.status
 
     def reset(self):
         self.send_cmd('RSET')
         self.clear()
 
+    def test(self):
+        self.send_cmd('TEST')
+
     def clear(self):
-        self.history = deque()
+        self.history = deque(maxlen=self.hist_length)
 
     def send_cmd(self, cmd):
         if self.is_opened:
@@ -148,7 +202,7 @@ class STM(object):
             #logger.info(f"TX  {cmd}")
 
     def move_motor(self, steps):
-        self.send_cmd('MTMV {steps}')
+        self.send_cmd(f'MTMV {steps}')
 
     def approach(self, target_dac, steps):
         self.send_cmd(f'APRH {target_dac} {steps}')
@@ -163,78 +217,30 @@ class STM(object):
         print(f"      yres  = {yres}")
         print(f"      samples  = {samples}")
         print(f"      uS  = {uS}")
-        self.send_cmd('NOIS {xres} {yres} {samples} {uS}')
-        self.busy = True
+        self.send_cmd(f'NOIS {xres} {yres} {samples} {uS}')
+        #self.busy = True
         self.scan_noise = np.ones([xres, yres], dtype=np.float32)
-        cnt = 0
-        self.busy = True
+        #self.busy = True
         self.scan_config = [0, 65535, xres, 0, 65535, yres]
 
-        current_line = ''
-
-        def _process_full_line(full_line):
-            logger.info(f"RX  {full_line}")
-            # print(full_line)
-            data = full_line.split(',')
-            data_type = data[0]
-            if data_type == "N":
-                x_i = int(data[1])
-                data_content = data[2:]
-                data_content = [int(x) for x in data_content]
-                self.scan_noise[x_i, :] = data_content
-            if data_type == "D":
-                return True
-            return False
-
-        while (True):
-            read_number = self.stm_serial.inWaiting()
-            if (read_number == 0):
-                continue
-            read_str = self.stm_serial.read(read_number).decode()
-            if "\n" in read_str:
-                split_lines = read_str.split("\n")
-                for data_line in split_lines:
-                    if len(data_line) == 0:
-                        continue
-                    current_line += data_line
-                    if current_line[-1] == "\r":  # We have a full line
-                        _process_full_line(current_line)
-                        current_line = ''
-            else:
-                current_line += read_str
-            # We have a full line
-            if current_line and current_line[-1] == "\r":
-                #_process_full_line(data_line)
-                _process_full_line(current_line)
-                current_line = ''
-            if "D" in read_str:
-                break
-        self.busy = False
-        print("Noise Scan Complete")
         return
 
     def measure_iv_curve(self, dac_start, dac_end, dac_step):
         self.send_cmd(f'IVME {dac_start} {dac_end} {dac_step}')
         # Wait for 0.1s for the STM to response
-        time.sleep(2)
+        time.sleep(1)
         return self.get_iv_curve()
 
     def get_iv_curve(self):
         bias = []
         current = []
         didv = []
-
         if self.is_opened:
-            self.busy = True
-            time.sleep(1)
-
+            self.pause_receive_thread()
             self.send_cmd('IVGE')   # or whatever command triggers send_iv_didv_curve()
-
             data_str = self.stm_serial.readline().decode().strip()
             logger.info(f"RX  {data_str}")
-
             data = data_str.split(',')
-
             if data[0] == "IVD":
                 try:
                     N = int(data[1])
@@ -252,11 +258,10 @@ class STM(object):
                     print("IVD parse error:", e)
 
         self.busy = False
-
+        self.resume_receive_thread()
         print("Bias:", bias)
         print("Current:", current)
         print("dIdV:", didv)
-
         return bias, current, didv
 
     def measure_dIdZ_curve(self, dac_start, dac_end, dac_step):
@@ -268,7 +273,8 @@ class STM(object):
     def get_dIdZ_curve(self):
         dIdZ_curve_values = [0, 0]
         if self.is_opened:
-            self.busy = True
+            # self.busy = True
+            self.pause_receive_thread()
             time.sleep(1)
             self.send_cmd('DIGE')
             data_str = self.stm_serial.readline().decode()
@@ -276,9 +282,18 @@ class STM(object):
             data = data_str.split(',')
             if data[0] == "DI":
                 dIdZ_curve_values = [int(x) for x in data[1:]]
-        self.busy = False
+        # self.busy = False
+        self.resume_receive_thread()
         print(dIdZ_curve_values)
         return dIdZ_curve_values
+
+    def set_sample_interval(self,value):
+        self.send_cmd(f"SINT {value}")
+        print(f"SINT {value}")
+
+    def set_scan_mode(self,value):
+        self.send_cmd(f"SMOD {value}")
+        print(f"SMOD {value}")
 
     def set_bias(self, value):
         self.send_cmd(f"BIAS {value}")
@@ -304,8 +319,125 @@ class STM(object):
     def set_settle(self, x,y,z,bias):
         self.send_cmd(f"SETL {x} {y} {z} {bias}")
 
+    # Receive and parse data
+    def _process_full_line_data(self, full_line):
+        logger.info(f"RX  {full_line}")
+        line = full_line.strip()
+        data = line.split(',')
+        data_type = data[0]
+        # ADC scan line
+        if data_type == "A":
+            x_i = int(data[1])
+            values = [int(x) for x in data[2:]]
+            self.scan_adc[x_i, :] = values
+            return True
+        # Z scan line
+        if data_type == "Z":
+            x_i = int(data[1])
+            values = [int(x) for x in data[2:]]
+            self.scan_dacz[x_i, :] = values
+            return True
+        # Noise scan line
+        if data_type == "N":
+            x_i = int(data[1])
+            values = [int(x) for x in data[2:]]
+            self.scan_noise[x_i, :] = values
+            return True
+        # Status update
+        if line.startswith("STAT:"):
+            self.status = STM_Status.parse_line(line)
+            self.history.append(self.status)
+            return True
+        # dIdZ curve
+        if line.startswith("DI"):
+            self.didz_curve_values = [int(x) for x in data[1:]]
+            return True        
+        # Scan done
+        if data_type == "D":            
+            self.busy = False            
+            if self._cb is not None:
+                self._cb()
+            return True
+        # Unknown packet
+        logger.warning(f"Unknown packet: {line}")
+        return False
+
+    def receive_data(self):
+        """Background serial receive thread."""
+        self.receiving = True
+        rx_buffer = ""
+        logger.info("STM receive thread started")
+
+        while self.receiving:
+            try:
+                if self.rx_pause_request:
+                    self.rx_paused = True
+
+                    while self.rx_pause_request:
+                        time.sleep(0.001)
+
+                    self.rx_paused = False
+
+                # Read available bytes
+                bytes_waiting = self.stm_serial.in_waiting
+                # Prevent CPU spin
+                if bytes_waiting == 0: # nothing to read or we're not listening
+                    time.sleep(0.001)
+                    continue
+                # Read and decode incoming data
+                incoming = self.stm_serial.read(bytes_waiting)
+                incoming_text = incoming.decode(errors='ignore')
+                # Append to persistent buffer
+                rx_buffer += incoming_text
+                # Process all complete lines
+                while '\n' in rx_buffer:
+                    # Split one line from buffer
+                    line, rx_buffer = rx_buffer.split('\n', 1)
+                    # Normalize line endings
+                    line = line.strip()
+                    # Ignore empty lines
+                    if not line:
+                        continue
+
+                    try:
+                        # Parse line
+                        self._process_full_line_data(line)
+                    except Exception as parse_error:
+                        logger.exception(
+                            f"STM parse error:\n{line}\n{parse_error}"
+                        )
+
+            except serial.SerialException as serial_error:
+                logger.exception(
+                    f"STM serial exception: {serial_error}"
+                )
+                self.receiving = False
+                self.is_opened = False
+                break
+            except Exception as thread_error:
+                logger.exception(
+                    f"STM receive thread exception: {thread_error}"
+                )
+                time.sleep(0.01)
+        logger.info("STM receive thread stopped")
+
+    # start continous scan
+    def start_scan_cont(self, x_start, x_end, x_resolution, y_start, y_end, y_resolution, sample_number):
+        # self.busy = True
+        self.scan_config = [x_start, x_end,
+                            x_resolution, y_start, y_end, y_resolution]
+        self.send_cmd(
+            f"SCCT {x_start} {x_end} {x_resolution} {y_start} {y_end} {y_resolution} {sample_number}")
+
+        # zero out the data to begin
+        self.scan_adc = np.ones([x_resolution, y_resolution], dtype=np.float32)
+        self.scan_dacz = np.ones([x_resolution, y_resolution], dtype=np.float32)
+
+        #current_line = ''
+
+    # for both the notmal scan and continuous scan, we use the threaded receive function to get and parse the data
     def start_scan(self, x_start, x_end, x_resolution, y_start, y_end, y_resolution, sample_number):
-        self.busy = True
+        # self.busy = True
         self.scan_config = [x_start, x_end,
                             x_resolution, y_start, y_end, y_resolution]
         self.send_cmd(
@@ -313,53 +445,6 @@ class STM(object):
 
         self.scan_adc = np.ones([x_resolution, y_resolution], dtype=np.float32)
         self.scan_dacz = np.ones([x_resolution, y_resolution], dtype=np.float32)
-
-        current_line = ''
-
-        def _process_full_line(full_line):
-            logger.info(f"RX  {full_line}")
-            # print(full_line)
-            data = full_line.split(',')
-            data_type = data[0]
-            if data_type == "A":
-                x_i = int(data[1])
-                data_content = data[2:]
-                data_content = [int(x) for x in data_content]
-                self.scan_adc[x_i, :] = data_content
-            if data_type == "Z":
-                x_i = int(data[1])
-                data_content = data[2:]
-                data_content = [int(x) for x in data_content]
-                self.scan_dacz[x_i, :] = data_content
-            if data_type == "D":
-                return True
-            return False
-
-        while (True):
-            read_number = self.stm_serial.inWaiting()
-            if (read_number == 0):
-                continue
-            read_str = self.stm_serial.read(read_number).decode()
-            if "\n" in read_str:
-                split_lines = read_str.split("\n")
-                for data_line in split_lines:
-                    if len(data_line) == 0:
-                        continue
-                    current_line += data_line
-                    if current_line[-1] == "\r":  # We have a full line
-                        _process_full_line(current_line)
-                        current_line = ''
-            else:
-                current_line += read_str
-            # We have a full line
-            if current_line and current_line[-1] == "\r":
-                #_process_full_line(data_line)
-                _process_full_line(current_line)
-                current_line = ''
-            if "D" in read_str:
-                break
-        self.busy = False
-        print("Scan Complete")
         return
 
     def startGridSpectroscopy(self,
@@ -372,6 +457,7 @@ class STM(object):
             return None
 
         self.busy = True
+        self.pause_receive_thread()
 
         # ---- Send command to firmware ----
         self.send_cmd(
@@ -433,6 +519,7 @@ class STM(object):
                     progress_callback(progress)
 
         self.busy = False
+        self.resume_receive_thread()
 
         print("Grid Spectroscopy Complete")
 

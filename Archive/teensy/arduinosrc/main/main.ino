@@ -1,9 +1,18 @@
 #include <Arduino.h>
 #include <SPI.h> // include the SPI library
 #include "stm_firmware.hpp"
+#include <IntervalTimer.h>
+
+IntervalTimer controlTimer;
 
 #define CMD_LENGTH 4
 STM stm = STM();
+
+// Our timer ISR
+void controlISR()
+{
+    stm.adc_sample_tick = true;
+}
 
 // Serial Commnications
 void serialCommand(String command, STM &stm)
@@ -83,12 +92,11 @@ void serialCommand(String command, STM &stm)
       int bias_start = Serial.parseInt();
       int bias_end = Serial.parseInt();
       int bias_step = Serial.parseInt();
-      //stm.generate_iv_curve(bias_start, bias_end, bias_step);
+
       stm.generate_iv_didv_curve(bias_start, bias_end, bias_step);
     }
     if (command == "IVGE")
     {
-      //stm.send_iv_curve();
       stm.send_iv_didv_curve();
     }
     // Measure dIdZ
@@ -165,6 +173,22 @@ void serialCommand(String command, STM &stm)
       int sample_per_pixel = Serial.parseInt();
       stm.start_scan(x_start, x_end, x_resolution, y_start, y_end, y_resolution, sample_per_pixel);
     }
+
+    if (command == "SCCT")
+    {
+      int x_start = Serial.parseInt();
+      int x_end = Serial.parseInt();
+      int x_resolution = Serial.parseInt();
+
+      int y_start = Serial.parseInt();
+      int y_end = Serial.parseInt();
+      int y_resolution = Serial.parseInt();
+
+      int sample_per_pixel = Serial.parseInt();
+      stm.stm_status.is_scanning = true; // say we're scanning
+      stm.start_continuous_scan(x_start,x_end,x_resolution,y_start,y_end,y_resolution,sample_per_pixel);
+    }    
+
     if (command == "TEST")
     {
       stm.test_piezo();
@@ -173,7 +197,7 @@ void serialCommand(String command, STM &stm)
     {
       stm.stm_status.is_approaching = false;
       stm.stm_status.is_const_current = false;
-      stm.stm_status.is_scanning = false;
+      stm.stm_status.is_scanning = false; // stops the continous scan
     }
     if (command == "SETL")
     { 
@@ -182,6 +206,22 @@ void serialCommand(String command, STM &stm)
        stm.piezo_y_settle_uS = Serial.parseInt();
        stm.piezo_z_settle_uS = Serial.parseInt();    
        stm.bias_settle_uS = Serial.parseInt();  
+    }    
+    if (command == "SMOD")
+    {
+        int mode = Serial.parseInt();
+        if (mode == 0)
+        {
+            stm.scan_timing_mode = STM::SCAN_DELAY_MODE;
+        }
+        if (mode == 1)
+        {
+            stm.scan_timing_mode = STM::SCAN_TIMER_MODE;
+        }
+    }    
+    if (command == "SINT")
+    {
+        set_sample_interval(Serial.parseInt());
     }    
   }
 }
@@ -201,6 +241,11 @@ void checkSerial(STM &stm)
   }
 }
 
+void set_sample_interval(uint32_t us)
+{
+    stm.sample_interval_us = us;
+    controlTimer.update(us);
+}
 
 void setup()
 {
@@ -217,18 +262,34 @@ void setup()
   stm.reset();
   stm.SetDefaults();
   // Init
+  // Start 40uS interrupt
+  controlTimer.begin(controlISR, 40); // 40 microseconds  
 }
+
+
 
 void loop()
 {
-  checkSerial(stm);
-  stm.update();
-  if (stm.stm_status.is_approaching)
-  {
-    stm.approach();
-  }
-  if (stm.stm_status.is_const_current)
-  {
-    stm.control_current(stm.read_adc_raw());
-  }
+
+
+    checkSerial(stm);
+
+    stm.wait_for_sample_tick();
+
+    stm.update();
+
+    if (stm.stm_status.is_scanning)
+    {
+        stm.update_continuous_scan();
+    }
+
+    if (stm.stm_status.is_approaching)
+    {
+        stm.approach();
+    }
+
+    if (stm.stm_status.is_const_current)
+    {
+        stm.control_current(stm.read_adc_raw());
+    }
 }

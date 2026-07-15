@@ -13,9 +13,6 @@ fmt.setProfile(QtGui.QSurfaceFormat.CompatibilityProfile)
 fmt.setDepthBufferSize(24)
 QtGui.QSurfaceFormat.setDefaultFormat(fmt)
 
-from PySide6.QtWidgets import QApplication
-from PySide6 import QtWidgets, QtCore, QtGui
-
 import plotframe
 from datetime import datetime
 import numpy as np
@@ -28,22 +25,14 @@ import pyqtgraph as pg
 import STMBoxWidget
 import GridSpectroWorker
 from PySide6.QtCore import Slot, QTimer
-from PySide6.QtWidgets import (QApplication,  QHBoxLayout,
-    QLabel, QLineEdit, QPushButton, QSizePolicy,
-    QSpacerItem, QSpinBox, QTabWidget, QVBoxLayout,
-    QWidget)
+from PySide6.QtWidgets import (QApplication,QVBoxLayout,QWidget)
 from ui_form import Ui_Widget
 import os
 import logging
 from qt_log_handler import QtLogHandler
 import tifffile
-import gwyfile
-from gwyfile.objects import GwyContainer
-from PySide6.QtCore import QObject, QThread, Signal
-from PySide6 import QtCore
-from PySide6 import QtWidgets, QtCore, QtGui
+from PySide6.QtCore import  QThread
 
-from PySide6.QtOpenGLWidgets import QOpenGLWidget
 print("OpenGL widget import OK")
 
 os.makedirs("./images", exist_ok=True)
@@ -58,11 +47,13 @@ class Widget(QWidget):
         self.ui = Ui_Widget()
         self.ui.setupUi(self)
         self.setWindowTitle("Moco Makers Lab STM")
+        self.moving = False;
+        self.laststep = 0;
         # ----------------------
         # STM Interface
         # ----------------------
         self.stm = stm_control.STM()
-
+        self.stm.set_done_callback(self.donecb)
         # ----------------------
         # Setup Plots
         # ----------------------
@@ -92,6 +83,7 @@ class Widget(QWidget):
         layout3.addWidget(self.pltDAC)
 
         self.pltVals = plotframe.PlotFrame()
+
         layout4 = QVBoxLayout(self.ui.pltVals)
         layout4.setContentsMargins(0,0,0,0)
         layout4.addWidget(self.pltVals)
@@ -176,6 +168,7 @@ class Widget(QWidget):
         logging.getLogger("stm").addHandler(self.qt_log_handler)
         self.qt_log_handler.log_signal.connect(self.append_log)
 
+<<<<<<<< HEAD:Archive/pc/qtpanda/widget.py
         # ----------------------
         # Stability Histogram
         # ----------------------
@@ -191,6 +184,12 @@ class Widget(QWidget):
         self.timer.timeout.connect(self.update_stability)
 
 
+========
+    def donecb(self):
+        #check to see if we're saving
+        if self.ui.chkAutoSave.isChecked():
+            self.save_scan_image(self.ui.leSave.text())
+>>>>>>>> e0771271b6c592e6a57bffd02c14e5742fb27295:software/pc/qtpanda/widget.py
     # ----------------------
     # Custom Box control
     # ----------------------
@@ -389,12 +388,15 @@ class Widget(QWidget):
         print(f"[CMD] OPEN  port={port}")
         self.stm.open(port)
 
-
     @Slot()
     def on_cmdStop_clicked(self):
         print("[CMD] STOP")
         self.stm.stop()
 
+    @Slot()
+    def on_cmdStopCont_clicked(self):
+        print("[CMD] STOP")
+        self.stm.stop()
 
     @Slot()
     def on_cmdReset_clicked(self):
@@ -406,6 +408,11 @@ class Widget(QWidget):
     def on_cmdClear_clicked(self):
         print("[CMD] CLEAR")
         self.stm.clear()
+
+    @Slot()
+    def on_cmdTest_clicked(self):
+        print("[TEST] CLEAR")
+        self.stm.test()
 
     @Slot()
     def on_cmdSendBias_clicked(self):
@@ -460,6 +467,19 @@ class Widget(QWidget):
         print(f"[CMD] APPROACH  steps={steps}  targetdac={targetdac}")
         self.stm.approach(targetdac,steps)
 
+    @Slot(int)
+    def on_spnTiminguS_valueChanged(self, value):
+        self.stm.set_sample_interval(value)
+
+    @Slot(bool)
+    def on_chkTimingMode_toggled(self, checked):
+        if checked:
+            self.stm.set_scan_mode(1) # SCAN_TIMER_MODE
+            print("SCAN_TIMER_MODE")
+        else:
+            self.stm.set_scan_mode(0) #SCAN_DELAY_MODE
+            print("SCAN_DELAY_MODE")
+
     @Slot(bool)
     def on_chkConstCurrent_toggled(self, checked):
         if checked:
@@ -473,18 +493,6 @@ class Widget(QWidget):
         else:
             print("[CMD] CONST_CURRENT_OFF")
             self.stm.turn_off_const_current()
-
-    @Slot()
-    def on_cmdCCOn_clicked(self):
-        target = int(self.ui.leCCVal.text())
-        print(f"[CMD] CONST_CURRENT_ON  target_adc={target}")
-        self.stm.turn_on_const_current(target)
-
-    @Slot()
-    def on_cmdCCOff_clicked(self):
-        print("[CMD] CONST_CURRENT_OFF")
-        self.stm.turn_off_const_current()
-
 
     # ----------------------
     # MOTOR MOVEMENT
@@ -537,45 +545,33 @@ class Widget(QWidget):
         ).start()
 
     @Slot()
-    def on_cmdSaveScan_clicked(self):
-        self.save_scan_image(self.ui.leSave.text())
+    def on_cmdStartCont_clicked(self):
 
-    @Slot()
-    def on_cmdScanMulti_clicked(self):
-        count = int(self.ui.leMultiScanTimes.text())
         x_start = int(self.ui.leXStart.text())
         x_end = int(self.ui.leXEnd.text())
         x_res = int(self.ui.leXRes.text())
+
         y_start = int(self.ui.leYStart.text())
         y_end = int(self.ui.leYEnd.text())
         y_res = int(self.ui.leYRes.text())
+
         samples = int(self.ui.leSamples.text())
 
-        print("[CMD] MULTI_SCAN")
-        print(f"      scans={count}")
+        print("[CMD] SCCT")
         print(f"      X: start={x_start} end={x_end} res={x_res}")
         print(f"      Y: start={y_start} end={y_end} res={y_res}")
         print(f"      samples={samples}")
+        print("      -> starting scan thread")
 
-        def worker(): #local thread worker function
-            print("[THREAD] Multi-scan worker started")
-            for i in range(count):
-                print(f"[SCAN] Starting scan {i+1}/{count}")
-                self.stm.start_scan(
-                    x_start, x_end, x_res,
-                    y_start, y_end, y_res,
-                    samples
-                )
-                while self.stm.busy:
-                    print("[SCAN] Waiting for scan to finish...")
-                    time.sleep(0.5)
+        self.stm.start_scan_cont(
+            x_start, x_end, x_res,
+            y_start, y_end, y_res,
+            samples
+        )
 
-                print("[SCAN] Scan finished — saving image")
-                self.save_scan_image(self.ui.leSave.text())
-                time.sleep(1)
-            print("[SCAN] All scans complete")
-
-        threading.Thread(target=worker, daemon=True).start()
+    @Slot()
+    def on_cmdSaveScan_clicked(self):
+        self.save_scan_image(self.ui.leSave.text())
 
 
     #Log handling
@@ -656,18 +652,12 @@ class Widget(QWidget):
 
     @Slot()
     def on_cmdSaveIV_clicked(self):
-
         prefix = self.ui.leIVFilename.text()
-
         print(f"[CMD] SAVE_IV  prefix={prefix}")
-
         iv_curve_values = self.stm.get_iv_curve()
-
         x_value = iv_curve_values[::2]
         y_value = iv_curve_values[1::2]
-
         print(f"[IV] saving {len(x_value)} points")
-
         self.save_iv_ascii(prefix, x_value, y_value)
 
 
@@ -677,7 +667,6 @@ class Widget(QWidget):
 
     @Slot()
     def on_cmdScandIdZ_clicked(self):
-
         start = int(self.ui.ledIdZStart.text())
         end = int(self.ui.ledIdZEnd.text())
         step = int(self.ui.ledIdZStep.text())
@@ -1107,6 +1096,18 @@ class Widget(QWidget):
 
         self.pltCurrent.update_plot(plot_x, plot_adc)
         self.pltSteps.update_plot(plot_x, plot_steps)
+
+        if(status.steps != self.laststep):
+            self.moving = True
+        else:
+            if(self.moving == True):  # if we were moving and now we're not - send a motor off message
+                print("MTOF") # MOTOR OFF
+                self.stm.send_cmd("MTOF")
+            self.moving = False
+
+
+        self.laststep = status.steps
+
     # ----------------------
     # Image Updates
     # ----------------------
@@ -1118,6 +1119,10 @@ class Widget(QWidget):
 
         x_start, x_end, x_res, y_start, y_end, y_res = self.stm.scan_config
 
+        #self.pltVals.update_image(
+        #    self.stm.scan_adc.T,
+        #    extent=[y_start, y_end, x_start, x_end]
+        #)
         self.pltVals.update_image(
             self.stm.scan_adc.T,
             extent=[y_start, y_end, x_start, x_end]
@@ -1198,52 +1203,276 @@ class Widget(QWidget):
     # Save Scan Image
     # ----------------------
 
+    # def save_scan_image(self, prefix):
+    #     print(prefix)
+    #     x_start, x_end, x_res, y_start, y_end, y_res = self.stm.scan_config
+    #     ts = int(datetime.timestamp(datetime.now()) * 1000)
+    #     np.savetxt(f"{prefix}_adc_{ts}.txt", self.stm.scan_adc)
+    #     print(f"{prefix}_adc_{ts}.txt")
+    #     #now as tiff
+    #     self.pltVals.save_figure(f"{prefix}_adc_{ts}.png")
+    #     print(f"{prefix}_adc_{ts}.png")
+    #     bias = self.ui.spnBias.value()
+    #     tifffile.imwrite(
+    #         f"{prefix}_adc_{ts}.tiff",
+    #         self.stm.scan_adc.astype(np.uint16),
+    #         metadata={
+    #             "XStart": x_start,
+    #             "XEnd": x_end,
+    #             "YStart": y_start,
+    #             "YEnd": y_end,
+    #             "Bias": bias
+    #         }
+    #     )
+    #     print(f"{prefix}_adc_{ts}.tiff")
+    #     self.save_gsf(
+    #         f"{prefix}_adc_{ts}.gsf",
+    #         self.stm.scan_adc,
+    #         x_real=500e-9,
+    #         y_real=500e-9,
+    #         xy_units="m",
+    #         z_units="mA",
+    #         title="Tunneling Current"
+    #     )
+
+    #     print(f"{prefix}_adc_{ts}.gsf")
+    #     self.save_gsf(
+    #         f"{prefix}_topography_{ts}.gsf",
+    #         self.stm.scan_dacz.T,
+    #         x_real=500e-9,
+    #         y_real=500e-9,
+    #         xy_units="m",
+    #         z_units="mA",
+    #         title="Topography"
+    #     )
+    #     print(f"{prefix}_topography_{ts}.gsf")
+
     def save_scan_image(self, prefix):
         print(prefix)
         x_start, x_end, x_res, y_start, y_end, y_res = self.stm.scan_config
         ts = int(datetime.timestamp(datetime.now()) * 1000)
+        # -------------------------------------------------
+        # Physical calibration
+        # -------------------------------------------------
+        FULL_SCALE_UM = 50.0
+        DAC_FULL_SCALE = 65535.0
+        meters_per_dac = (FULL_SCALE_UM * 1e-6) / DAC_FULL_SCALE
+        um_per_dac = FULL_SCALE_UM / DAC_FULL_SCALE
+        # -----------------------------------------------
+        # DAC ranges
+        # -------------------------------------------------
+        x_range_dac = abs(x_end - x_start)
+        y_range_dac = abs(y_end - y_start)
+
+        # -------------------------------------------------
+        # Physical image size
+        # -------------------------------------------------
+
+        x_real_m = x_range_dac * meters_per_dac
+        y_real_m = y_range_dac * meters_per_dac
+
+        x_real_um = x_range_dac * um_per_dac
+        y_real_um = y_range_dac * um_per_dac
+
+        # -------------------------------------------------
+        # Start coordinates
+        # -------------------------------------------------
+
+        x_start_m = x_start * meters_per_dac
+        y_start_m = y_start * meters_per_dac
+
+        x_start_um = x_start * um_per_dac
+        y_start_um = y_start * um_per_dac
+
+        # -------------------------------------------------
+        # End coordinates
+        # -------------------------------------------------
+
+        # x_end_m = x_end * meters_per_dac
+        # y_end_m = y_end * meters_per_dac
+
+        x_end_um = x_end * um_per_dac
+        y_end_um = y_end * um_per_dac
+
+        # -------------------------------------------------
+        # Center coordinates
+        # -------------------------------------------------
+
+        x_center_dac = (x_start + x_end) / 2.0
+        y_center_dac = (y_start + y_end) / 2.0
+
+        # x_center_m = x_center_dac * meters_per_dac
+        # y_center_m = y_center_dac * meters_per_dac
+
+        x_center_um = x_center_dac * um_per_dac
+        y_center_um = y_center_dac * um_per_dac
+
+        # -------------------------------------------------
+        # Pixel size
+        # -------------------------------------------------
+
+        pixel_x_m = x_real_m / x_res
+        pixel_y_m = y_real_m / y_res
+
+        pixel_x_nm = pixel_x_m * 1e9
+        pixel_y_nm = pixel_y_m * 1e9
+
+        # -------------------------------------------------
+        # Save raw text
+        # -------------------------------------------------
+
         np.savetxt(f"{prefix}_adc_{ts}.txt", self.stm.scan_adc)
+
         print(f"{prefix}_adc_{ts}.txt")
-        #now as tiff
+
+        # -------------------------------------------------
+        # Save PNG
+        # -------------------------------------------------
+
         self.pltVals.save_figure(f"{prefix}_adc_{ts}.png")
+
         print(f"{prefix}_adc_{ts}.png")
 
-        bias = self.ui.spnBias.value()
+        # -------------------------------------------------
+        # STM settings
+        # -------------------------------------------------
+
+        bias_dac = self.ui.spnBias.value()
+        bias_volts = stm_control.STM_Status.dac_to_bias_volts(bias_dac)
+
+        # -------------------------------------------------
+        # Save TIFF with rich metadata
+        # -------------------------------------------------
+
         tifffile.imwrite(
             f"{prefix}_adc_{ts}.tiff",
-            self.stm.scan_adc.astype(np.uint16),
+            self.stm.scan_adc.astype(np.float32),
             metadata={
-                "XStart": x_start,
-                "XEnd": x_end,
-                "YStart": y_start,
-                "YEnd": y_end,
-                "Bias": bias
+
+                # -------------------------------
+                # DAC coordinates
+                # -------------------------------
+
+                "XStart_DAC": x_start,
+                "XEnd_DAC": x_end,
+                "YStart_DAC": y_start,
+                "YEnd_DAC": y_end,
+
+                "XCenter_DAC": x_center_dac,
+                "YCenter_DAC": y_center_dac,
+
+                # -------------------------------
+                # Physical coordinates
+                # -------------------------------
+
+                "XStart_um": x_start_um,
+                "YStart_um": y_start_um,
+
+                "XEnd_um": x_end_um,
+                "YEnd_um": y_end_um,
+
+                "XCenter_um": x_center_um,
+                "YCenter_um": y_center_um,
+
+                # -------------------------------
+                # Scan dimensions
+                # -------------------------------
+
+                "XRange_um": x_real_um,
+                "YRange_um": y_real_um,
+
+                # -------------------------------
+                # Resolution
+                # -------------------------------
+
+                "XResolution": x_res,
+                "YResolution": y_res,
+
+                # -------------------------------
+                # Pixel calibration
+                # -------------------------------
+
+                "PixelSizeX_nm": pixel_x_nm,
+                "PixelSizeY_nm": pixel_y_nm,
+
+                "MetersPerDAC": meters_per_dac,
+                "MicronsPerDAC": um_per_dac,
+
+                # -------------------------------
+                # STM settings
+                # -------------------------------
+
+                "BiasDAC": bias_dac,
+                "BiasVolts": bias_volts,
+
+                # -------------------------------
+                # Timestamp
+                # -------------------------------
+
+                "Timestamp": ts
             }
         )
+
         print(f"{prefix}_adc_{ts}.tiff")
+
+        # -------------------------------------------------
+        # Save GSF - Current Image
+        # -------------------------------------------------
+
         self.save_gsf(
             f"{prefix}_adc_{ts}.gsf",
-            self.stm.scan_adc,
-            x_real=500e-9,
-            y_real=500e-9,
+            self.stm.scan_adc.T,
+
+            x_real=x_real_m,
+            y_real=y_real_m,
+
+            # IMPORTANT:
+            # Use START coordinate for stitching/alignment
+            x_offset=x_start_m,
+            y_offset=y_start_m,
+
             xy_units="m",
             z_units="A",
+
             title="Tunneling Current"
         )
 
         print(f"{prefix}_adc_{ts}.gsf")
+
+        # -------------------------------------------------
+        # Save GSF - Topography
+        # -------------------------------------------------
+
         self.save_gsf(
             f"{prefix}_topography_{ts}.gsf",
             self.stm.scan_dacz.T,
-            x_real=500e-9,
-            y_real=500e-9,
+
+            x_real=x_real_m,
+            y_real=y_real_m,
+
+            # IMPORTANT:
+            # Use START coordinate for stitching/alignment
+            x_offset=x_start_m,
+            y_offset=y_start_m,
+
             xy_units="m",
-            z_units="m",
+            z_units="DAC",
+
             title="Topography"
         )
+
         print(f"{prefix}_topography_{ts}.gsf")
 
+        # -------------------------------------------------
+        # Console summary
+        # -------------------------------------------------
 
+        print("[SAVE] Scan saved")
+        print(f"        Scan Size : {x_real_um:.3f} um x {y_real_um:.3f} um")
+        print(f"        Start     : ({x_start_um:.3f} um, {y_start_um:.3f} um)")
+        print(f"        End       : ({x_end_um:.3f} um, {y_end_um:.3f} um)")
+        print(f"        Center    : ({x_center_um:.3f} um, {y_center_um:.3f} um)")
+        print(f"        Pixel     : {pixel_x_nm:.2f} nm x {pixel_y_nm:.2f} nm")
 if __name__ == "__main__":
 
     app = QApplication(sys.argv)
