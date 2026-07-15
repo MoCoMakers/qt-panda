@@ -1,9 +1,23 @@
 __pycache__/
 images/
 .claude/
+.pytest_cache/
 
 reference/
 documentation/docs-for-ai/
-wedge-assembly/docs-for-ai/
-wedge-assembly/references/
 scripts/
+
+# Team-share / data-export areas (not source code)
+TeamUpdate/
+wedge-assembly/
+09-July-2026/
+09-July-2026.zip
+15-July-2026/
+
+# Generated bench data — large, regenerated, kept out of git
+logs/
+scans/
+raw/
+*.frames
+*.scst
+*.raw

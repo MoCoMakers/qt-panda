@@ -67,6 +67,7 @@ class Emulator:
     ARGC = {
         "GSTS": 0, "RSET": 0, "STOP": 0, "CCOF": 0, "IVGE": 0, "DIGE": 0,
         "ADCR": 0, "MTOF": 0, "ENGA": 0, "RTRC": 0, "HALT": 0, "TEST": 0,
+        "VERS": 0, "STRM": 1,
         "BIAS": 1, "DACX": 1, "DACY": 1, "DACZ": 1, "MTMV": 1, "MTDR": 1,
         "CCON": 1, "SETP": 1, "SCSZ": 1, "IPLN": 1, "LRAT": 1, "XOFS": 1,
         "YOFS": 1, "KPGA": 1, "KIGA": 1, "SETD": 1,
@@ -101,6 +102,8 @@ class Emulator:
         self.iv_range = (0, 0, 1)
         self.didz_range = (0, 0, 1)
         self.t0 = time.monotonic()
+        self.stream_hz = 0          # STRM push-mode status rate (0 = off)
+        self.stream_next = None     # monotonic time the next frame is due
 
     # ---- signal model ------------------------------------------------------
     def elapsed_ms(self):
@@ -138,11 +141,47 @@ class Emulator:
             int(self.is_scanning), self.elapsed_ms(),
         ).encode()
 
+    def status_frame(self):
+        """Binary 'S' frame, byte-identical to firmware emitStatusFrame():
+        magic + u32 time_millis + i16 adc + u16 dac_z + u16 bias + i32 steps
+        + flags + 0x0A, all big-endian."""
+        flags = ((0x01 if self.is_approaching else 0)
+                 | (0x02 if self.is_const_current else 0)
+                 | (0x04 if self.is_scanning else 0))
+        return (b"S"
+                + struct.pack(">IhHHiB",
+                              self.elapsed_ms() & 0xFFFFFFFF,
+                              int(np.clip(self.current_adc(), -32768, 32767)),
+                              self.dac_z & 0xFFFF, self.bias & 0xFFFF,
+                              self.steps, flags)
+                + b"\n")
+
+    def pump_stream(self, sock):
+        """Emit any due 'S' frames.  The serve loop wakes every <=50 ms, so
+        at high rates this sends a small catch-up burst — the PC reader is
+        buffered and frames carry their own timestamps, so bursts are fine."""
+        if not self.stream_hz or self.stream_next is None:
+            return
+        now = time.monotonic()
+        interval = 1.0 / self.stream_hz
+        sent = 0
+        while now >= self.stream_next and sent < 100:
+            sock.sendall(self.status_frame())
+            self.stream_next += interval
+            sent += 1
+        if now - self.stream_next > 1.0:      # fell far behind; resync
+            self.stream_next = now
+
     # ---- command handling --------------------------------------------------
     def handle(self, cmd, args, sock):
         """Apply a command; write any reply straight to the socket."""
         if cmd == "GSTS":
             sock.sendall(self.status_line())
+        elif cmd == "STRM":
+            self.stream_hz = max(0, min(args[0], 500))
+            self.stream_next = time.monotonic() if self.stream_hz else None
+        elif cmd == "VERS":
+            sock.sendall(b"QTPANDA-FW 5.0 CAPS:RUN,STRM (EMULATED)\r\n")
         elif cmd == "RSET":
             self.bias = self.dac_x = self.dac_y = self.dac_z = 32768
             self.steps = 0
@@ -277,6 +316,9 @@ def serve(emu, port):
                     buf += chunk
                 except socket.timeout:
                     pass
+
+                # Push-mode status frames (STRM), interleaved with replies.
+                emu.pump_stream(conn)
 
                 progressed = True
                 while progressed:

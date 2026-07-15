@@ -1,0 +1,13 @@
+# Runtime dependencies for the qt-panda STM control software (pc/qtpanda).
+#
+# Versioning policy: NO minor/patch pins.  Major pins ONLY where a library
+# has known breaking changes across major versions or a hard requirement.
+# Install with:  pip install -r requirements.txt
+
+PySide6        # Qt 6 GUI framework (v6 API — do NOT substitute PySide2)
+pyqtgraph      # fast live plotting and the raster / image panels
+numpy          # arrays, FFT, super-resolution reconstruction math
+pyserial       # serial link to the Teensy firmware (imported as `serial`)
+tifffile       # scan-image export (.tiff)
+gwyfile        # Gwyddion .gwy read/write
+Pillow         # image helpers (imported as `PIL`)

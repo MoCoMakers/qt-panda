@@ -61,7 +61,14 @@ def parse_natural_language(text: str):
     if mt:
         kwargs["temperature_K"] = float(mt.group(1))
 
-    # route by keywords -- thermal/brownian/gold-atom question first
+    # route by keywords -- wedge/clamshell gearing first (it also mentions "piezo")
+    if any(w in t for w in ("wedge", "clamshell", "hinge", "lever", "per step")):
+        kwargs.pop("theta_deg", None)
+        kwargs.pop("temperature_K", None)
+        if "lengths_mm" in kwargs:
+            kwargs = {"lengths_mm": kwargs["lengths_mm"]}
+        return "wedge-lever-gearing", kwargs
+    # thermal/brownian/gold-atom question next
     if any(w in t for w in ("brownian", "thermal", "vibrat", "atom", "gold")):
         kwargs.pop("theta_deg", None)
         kwargs.pop("lengths_mm", None)
