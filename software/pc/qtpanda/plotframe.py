@@ -42,6 +42,9 @@ class PlotFrame(QtWidgets.QWidget):
         self.marker = None
         self.marker_text = None
         self._extra_curves = {}
+        self.region = None
+        self.region_plot = None
+        self.region_curve = None
 
     # --------------------------
     # Line Plot
@@ -199,6 +202,60 @@ class PlotFrame(QtWidgets.QWidget):
         if self.marker_text is not None:
             self.marker_text.setText("")
 
+    def add_x_region_selector(self):
+        """Add a slim overview strip under the main plot with a draggable
+        left/right region (like the histogram level handles on the image
+        tabs).  Dragging either edge, or sliding the whole band, sets the
+        main plot's visible X range; the strip always shows the full curve.
+
+        Call after add_plot() / set_log_mode().  update_plot() feeds the
+        strip and resets the region to the full data span on new data."""
+        if self.plot_item is None:
+            return
+
+        self.graphics.nextRow()
+        self.region_plot = self.graphics.addPlot()
+        self.region_plot.setMaximumHeight(60)
+        self.region_plot.hideAxis('left')
+        self.region_plot.setMouseEnabled(x=False, y=False)
+        self.region_plot.getAxis('bottom').enableAutoSIPrefix(False)
+        self.region_curve = self.region_plot.plot(
+            [], [], pen=pg.mkPen((150, 150, 150), width=1))
+        if getattr(self, "_log_x", False) or getattr(self, "_log_y", False):
+            self.region_plot.setLogMode(x=self._log_x, y=self._log_y)
+
+        # Region coords live in view space, i.e. log10 units on a log-x
+        # plot — the same space setXRange() expects, so no conversion.
+        self.region = pg.LinearRegionItem(movable=True)
+        self.region.setZValue(10)
+        self.region_plot.addItem(self.region, ignoreBounds=True)
+        self.region.sigRegionChanged.connect(self._region_changed)
+
+        # Rescale Y to just the selected band, so narrowing the region
+        # actually magnifies the features inside it.
+        self.plot_item.setAutoVisible(y=True)
+
+    def _region_changed(self):
+        if self.region is None or self.plot_item is None:
+            return
+        lo, hi = self.region.getRegion()
+        if hi > lo:
+            self.plot_item.setXRange(lo, hi, padding=0)
+
+    def _reset_region(self, x_data):
+        """Feed the overview strip and open the region to the full span of
+        the new data (view coords, so log10 on a log-x axis)."""
+        xs = [x for x in x_data
+              if x > 0 or not getattr(self, "_log_x", False)]
+        if len(xs) < 2:
+            self.region_curve.setData([], [])
+            return
+        lo, hi = min(xs), max(xs)
+        if getattr(self, "_log_x", False):
+            lo, hi = log10(lo), log10(hi)
+        self.region.setBounds([lo, hi])
+        self.region.setRegion([lo, hi])
+
     def add_extra_curve(self, name, pen=None, label=None):
         """Add an additional named line to the current plot_item, alongside
         the primary curve managed by update_plot() (e.g. reference/guide
@@ -277,6 +334,10 @@ class PlotFrame(QtWidgets.QWidget):
 
         if self.curve is not None:
             self.curve.setData(x_data, y_data)
+
+        if self.region is not None:
+            self.region_curve.setData(x_data, y_data)
+            self._reset_region(x_data)
 
     # --------------------------
     # Update Image

@@ -55,6 +55,7 @@ import live_raster
 import stab_runner
 import session_journal
 import frame_logger
+import data_paths
 import raw_logger
 import status_logger
 import drift_hold
@@ -62,9 +63,101 @@ import dac_restore
 import superscan
 from collections import deque
 
-os.makedirs("./images", exist_ok=True)
 print("Profile:",
       QtGui.QSurfaceFormat.defaultFormat().profile())
+
+
+def _precision_step(mods):
+    """Modifier -> LSB per wheel notch (shared by slider + scrollbars)."""
+    shift = bool(mods & Qt.ShiftModifier)
+    ctrl = bool(mods & Qt.ControlModifier)
+    if shift and ctrl:
+        return 1000     # big jumps
+    if ctrl:
+        return 100
+    if shift:
+        return 1        # ultra fine
+    return 10
+
+
+class PrecisionSlider(QSlider):
+    """QSlider with operator-grade precision control.
+
+    Wheel: Shift = 1 LSB/notch, plain = 10, Ctrl = 100, Ctrl+Shift = 1000.
+    On an inverted-appearance slider the wheel is remapped so wheel-UP
+    always moves the handle UP (= Away/safe on the Z gauge) — stock Qt
+    moved the tip TOWARD the sample on wheel-up.
+
+    Drag: plain drag is the normal absolute slider drag (fast, coarse).
+    Shift+drag switches to a geared RELATIVE drag — 1 LSB per pixel of
+    mouse travel (Ctrl+Shift+drag: 5 LSB/px) — for dialing in the last
+    few tens of LSB without the handle jumping to the click point.
+    """
+
+    def __init__(self, *a, **k):
+        super().__init__(*a, **k)
+        self._prec_y = None
+        self._prec_val = 0
+
+    def wheelEvent(self, ev):
+        notches = ev.angleDelta().y() / 120.0
+        if not notches:
+            ev.ignore()
+            return
+        step = _precision_step(ev.modifiers())
+        delta = int(round(notches * step)) or (1 if notches > 0 else -1)
+        if self.invertedAppearance():
+            delta = -delta      # wheel-up must move the handle up
+        self.setValue(self.value() + delta)
+        ev.accept()
+
+    def mousePressEvent(self, ev):
+        if (ev.button() == Qt.LeftButton
+                and ev.modifiers() & Qt.ShiftModifier):
+            self._prec_y = ev.position().y()
+            self._prec_val = self.value()
+            self.setSliderDown(True)    # blocks stream echo during drag
+            ev.accept()
+            return
+        super().mousePressEvent(ev)
+
+    def mouseMoveEvent(self, ev):
+        if self._prec_y is not None:
+            gear = 5 if ev.modifiers() & Qt.ControlModifier else 1
+            dy = ev.position().y() - self._prec_y
+            delta = int(dy * gear) if self.invertedAppearance() \
+                else int(-dy * gear)
+            self.setValue(self._prec_val + delta)
+            ev.accept()
+            return
+        super().mouseMoveEvent(ev)
+
+    def mouseReleaseEvent(self, ev):
+        if self._prec_y is not None:
+            self._prec_y = None
+            self.setSliderDown(False)
+            ev.accept()
+            return
+        super().mouseReleaseEvent(ev)
+
+
+class PrecisionWheelFilter(QtCore.QObject):
+    """Event filter giving any QAbstractSlider (e.g. the Configuration-tab
+    DACZ/Bias drag bars) the same modifier-scaled wheel steps."""
+
+    def eventFilter(self, obj, ev):
+        if ev.type() == QtCore.QEvent.Wheel:
+            notches = ev.angleDelta().y() / 120.0
+            if notches:
+                step = _precision_step(ev.modifiers())
+                delta = int(round(notches * step)) \
+                    or (1 if notches > 0 else -1)
+                if getattr(obj, "invertedAppearance", lambda: False)():
+                    delta = -delta
+                obj.setValue(obj.value() + delta)
+            return True
+        return False
+
 
 class Widget(QWidget):
 
@@ -74,6 +167,11 @@ class Widget(QWidget):
         self.ui = Ui_Widget()
         self.ui.setupUi(self)
         self.setWindowTitle("Moco Makers Lab STM")
+        # Modifier-scaled wheel steps on the Configuration-tab drag bars
+        # (Shift=1 LSB, plain=10, Ctrl=100, Ctrl+Shift=1000).
+        self._prec_wheel = PrecisionWheelFilter(self)
+        for _bar in (self.ui.scr_DACZ, self.ui.scr_Bias):
+            _bar.installEventFilter(self._prec_wheel)
         # ----------------------
         # STM Interface
         # ----------------------
@@ -238,6 +336,20 @@ class Widget(QWidget):
         self._btn_main_save.clicked.connect(self._cs_raster._do_save)
         self.ui.horizontalLayout_12.insertWidget(0, self._btn_main_autolevel)
         self.ui.horizontalLayout_12.insertWidget(1, self._btn_main_save)
+        # Always-visible recording posture: ● = writing to disk, ○ = not.
+        # REC = 200 Hz status CSV, RAW = 25 kHz ISR tap.  Updated by the
+        # 2 s re-arm watchdog; tooltip carries the live file paths.
+        self._rec_state_lbl = QLabel("REC ○  RAW ○")
+        self.ui.horizontalLayout_12.insertWidget(2, self._rec_state_lbl)
+        # One-click review of everything recorded since midnight (all
+        # sessions of the day), in the offline sweep player.
+        self._btn_review = QPushButton("Review Day", self.ui.wgtAutoLevels)
+        self._btn_review.setToolTip(
+            "Open the sweep player on today's data folder — every session "
+            "since midnight.  Runs as its own process (file-based, no "
+            "hardware access), safe alongside the live GUI.")
+        self._btn_review.clicked.connect(self._launch_day_review)
+        self.ui.horizontalLayout_12.insertWidget(3, self._btn_review)
 
         # Preamp gain selector (operator-set; NOT a code magic number).
         # At NX gain the same current gives N× the ADC counts, so the
@@ -297,10 +409,12 @@ class Widget(QWidget):
         self.stab_log_file = None     # open CSV file handle while recording
         self.stab_log_writer = None   # csv.writer bound to stab_log_file
         self.stab_log_path = None     # path of the current log file
+        self._stab_clear_ms = None    # Clear watermark: verdicts grade only
+                                      # samples after this firmware millis
         self._stab_reader = None      # SerialReaderThread while streaming
         self._stab_streaming = False  # True when STRM push mode owns the port
         self._stab_stream_frames = 0  # frames received (stream watchdog)
-        self._raw_logger = raw_logger.RawLogger(log_dir="raw")
+        self._raw_logger = raw_logger.RawLogger()   # -> data_paths day folder
         self._raw_reader = None       # dedicated reader if nothing else runs
         self._raw_decim = 0
         self.build_stability_tab()
@@ -346,6 +460,7 @@ class Widget(QWidget):
         # happening" — the feed was down to the 9 Hz poll).  Re-arm once
         # the port has been quiet for two consecutive checks.
         self._rearm_quiet = 0
+        self._raw_rearm_quiet = 0
         self._rearm_timer = QTimer(self)
         self._rearm_timer.timeout.connect(self._rearm_stream_check)
         self._rearm_timer.start(2000)
@@ -632,6 +747,19 @@ class Widget(QWidget):
 
     def closeEvent(self, event):
         self._save_dac_xy()
+        # Finalize every recorder so sidecars get their end-of-capture
+        # totals (all are crash-safe without this, but a clean close should
+        # leave a clean record).
+        try:
+            if self._raw_logger.is_active():
+                self.raw_stop(src="auto")
+        except Exception:
+            pass
+        try:
+            self._stop_session_recording()
+        except Exception:
+            pass
+        session_journal.stop()
         super().closeEvent(event)
 
     def _restore_dac_xy(self):
@@ -673,6 +801,12 @@ class Widget(QWidget):
                 session_journal.start(port=port)
             session_journal.record("port_open", path=port)
             self._start_session_recording()
+            # Record-everything (operator directive 2026-07-26): the 25 kHz
+            # raw ISR tap runs whenever the port does.  Retroactive stories
+            # ("we just touched the tip", "changed the gain") only work if
+            # the ground truth was already on disk.  One continuous file
+            # per capture — never rotated or pruned.
+            self.raw_start(decim=1, src="auto")
             self._restore_dac_xy()
 
     # ----------------------
@@ -1256,8 +1390,12 @@ class Widget(QWidget):
     @Slot(int)
     def _on_preamp_gain(self, _idx):
         g = float(self._preamp_gain.currentData())
+        old = float(stm_control.STM_Status.preamp_gain)
         stm_control.STM_Status.preamp_gain = g
         self._settings.setValue("preamp/gain", g)
+        # tm-anchored journal entry: a gain change must be locatable inside
+        # the raw stream during post-processing.
+        session_journal.setting("preamp_gain", old, g)
         session_journal.note(f"preamp gain set to {g:g}X", src="human")
         print(f"[PREAMP] gain = {g:g}X (current conversion now /{g:g})")
 
@@ -1414,9 +1552,10 @@ class Widget(QWidget):
             prefix = self.ui.leSave.text().strip()
         except Exception:
             prefix = ""
-        prefix = prefix or "stability"
+        prefix = data_paths.resolve_prefix(prefix, default_base="stability")
         ts = int(datetime.timestamp(datetime.now()) * 1000)
-        self.stab_log_path = f"{prefix}_stability_{ts}.csv"
+        self.stab_log_path = (
+            f"{prefix}_stability_{ts}{session_journal.tag()}.csv")
         self._status_logger.start(self.stab_log_path)
         if not session_journal.is_active():
             session_journal.start(csv=self.stab_log_path)
@@ -1516,6 +1655,53 @@ class Widget(QWidget):
                 self._start_stab_stream()
         else:
             self._rearm_quiet = 0
+        # Raw ISR tap is part of the same always-on posture.  Unlike the
+        # stream it also runs DURING scans (rawBlock is wired on every
+        # reader), so the only bad moments are legacy synchronous ops
+        # (_suppress_auto_record) and a busy port.  Same 2-check
+        # hysteresis + backoff as above.
+        if (self.stm.is_opened
+                and self._recording
+                and not self._raw_logger.is_active()
+                and not self.stm.busy
+                and not getattr(self, "_suppress_auto_record", False)):
+            self._raw_rearm_quiet += 1
+            if self._raw_rearm_quiet >= 2:
+                self._raw_rearm_quiet = -8
+                print("[RAW] tap down and port up — (re)arming 25 kHz "
+                      "raw capture")
+                self.raw_start(decim=1, src="auto")
+        else:
+            self._raw_rearm_quiet = 0
+        self._update_rec_indicator()
+
+    def _launch_day_review(self):
+        """Sweep player on today's day folder, as an independent process.
+        It reads only files (indexes rebuild automatically for growing
+        .frames), so the live GUI and serial port are untouched."""
+        import subprocess
+        here = os.path.dirname(os.path.abspath(__file__))
+        day = data_paths.day_dir()
+        subprocess.Popen(
+            [sys.executable,
+             os.path.join(here, "replay", "sweep_player.py"), day],
+            cwd=here)
+        session_journal.record("day_review_launched", path=day)
+        print(f"[REVIEW] sweep player launched on {day}")
+
+    def _update_rec_indicator(self):
+        rec_on = (self._recording
+                  and (self._stab_streaming or self._scan_ctrl.is_running()))
+        raw_on = self._raw_logger.is_active()
+        self._rec_state_lbl.setText(
+            f"REC {'●' if rec_on else '○'}  RAW {'●' if raw_on else '○'}")
+        tips = []
+        if rec_on and getattr(self, "stab_log_path", None):
+            tips.append(f"status: {self.stab_log_path}")
+        if raw_on and self._raw_logger.base_path:
+            tips.append(f"raw: {self._raw_logger.base_path}.raw "
+                        f"({self._raw_logger.n_samples} samples)")
+        self._rec_state_lbl.setToolTip("\n".join(tips) or "not recording")
 
     def _pause_stab_stream_for_scan(self):
         """Stop only the recording's reader thread, keeping firmware STRM
@@ -1622,10 +1808,16 @@ class Widget(QWidget):
             self._raw_reader.rawBlock.connect(
                 self._raw_logger.on_block, QtCore.Qt.DirectConnection)
             self._raw_reader.start()
-        fs = 1e6 / (40.0 * decim)     # nominal (control_dt_us default 40)
+        # The GUI never sends SETD, so the ISR period is the firmware
+        # default 40 us; recorded here so reconstruction never has to
+        # assume it.  Absolute sample time = block t0_millis + i*dt*decim.
+        control_dt_us = 40.0
+        fs = 1e6 / (control_dt_us * decim)
         self._raw_logger.start({
             "decim": decim,
             "nominal_sample_hz": fs,
+            "control_dt_us": control_dt_us,
+            "preamp_gain": float(stm_control.STM_Status.preamp_gain),
             "bias_dac": self.ui.spnBias.value(),
         })
         self._raw_decim = decim
@@ -1680,7 +1872,8 @@ class Widget(QWidget):
         # the in-memory current-only buffer can't provide).
         verdict = None
         try:
-            verdict = stab_runner.analyze(self.stab_log_path)
+            verdict = stab_runner.analyze(self.stab_log_path,
+                                          since_ms=self._stab_clear_ms)
         except Exception as e:
             print(f"[STAB] verdict unavailable: {e}")
         session_journal.record("stab_window_stop", path=self.stab_log_path)
@@ -1700,7 +1893,11 @@ class Widget(QWidget):
         self.pltStability.update_histogram([], [], None)
         self.lblStabStats.setText("No data yet.")
         self.lblStabDrift.setText("")
-        print("[STAB] cleared")
+        # Reset the VERDICT window too: grading at Stop only considers
+        # samples after this moment (the CSV keeps recording everything).
+        self._stab_clear_ms = self.stab_last_t
+        session_journal.record("stab_cleared", since_ms=self._stab_clear_ms)
+        print("[STAB] cleared (verdict window reset)")
 
         self.pltFourierPsd.update_plot([], [])
         self.pltFourierPsd.clear_marker()
@@ -1802,9 +1999,10 @@ class Widget(QWidget):
             prefix = self.ui.leSave.text().strip()
         except Exception:
             prefix = ""
-        prefix = prefix or "stability"
+        prefix = data_paths.resolve_prefix(prefix, default_base="stability")
         ts = int(datetime.timestamp(datetime.now()) * 1000)
-        self.stab_log_path = f"{prefix}_stability_{ts}.csv"
+        self.stab_log_path = (
+            f"{prefix}_stability_{ts}{session_journal.tag()}.csv")
         self.stab_t0 = None
         try:
             self.stab_log_file = open(self.stab_log_path, "w", newline="")
@@ -2025,6 +2223,7 @@ class Widget(QWidget):
         )
         self.pltFourierPsd.set_log_mode(x=True, y=True)
         self.pltFourierPsd.disable_si_prefix()
+        self.pltFourierPsd.add_x_region_selector()
         row.addWidget(self.pltFourierPsd, 1)
 
         self.pltFourierAllan = plotframe.PlotFrame()
@@ -2068,6 +2267,19 @@ class Widget(QWidget):
             return "", "black"
         name = verdict.get("verdict", "?")
         label = self._VERDICT_LABELS.get(name, name)
+        # CONTACT covers everything from occasional tip touches to a fully
+        # planted tip — say which one this was (bench 2026-07-24: "railed
+        # against surface" over a session that was mostly good tunneling).
+        if name == "CONTACT":
+            frac = verdict.get("rail_fraction")
+            if frac is not None:
+                kind = ("sustained contact" if frac >= 0.5
+                        else "intermittent tip-surface contact")
+                label = f"CONTACT ({frac:.0%} of samples railed - {kind})"
+                floor = verdict.get("floor")
+                if frac < 0.5 and floor:
+                    label += (f"; free samples avg "
+                              f"{floor['signed_mean_pA']:.0f} pA")
         crit = verdict.get("criteria", {})
         mos = crit.get("signed_mean_over_sigma")
         detail = ""
@@ -2075,7 +2287,19 @@ class Widget(QWidget):
             need = crit.get("required_sigmas", 3.0)
             detail = f"  (signed mean/sigma={mos:.2f}, need >={need:.0f})"
         color = self._VERDICT_COLORS.get(name, "#b00020")   # default red
-        return f"VERDICT: {label}{detail}\n", color
+        # Second line: what the junction was doing at Stop (the overall
+        # grade covers the whole session-cumulative recording).
+        tail = verdict.get("tail")
+        tail_line = ""
+        if tail:
+            tl = self._VERDICT_LABELS.get(tail["verdict"], tail["verdict"])
+            med = tail.get("median_pA")
+            med_txt = f", median {med:.0f} pA" if med is not None else ""
+            tail_line = (f"final {tail['seconds']:.0f} s: {tl} "
+                         f"(rail {tail['rail_fraction']:.0%}{med_txt})\n")
+            if tail["verdict"] != name:
+                color = self._VERDICT_COLORS.get(tail["verdict"], color)
+        return f"VERDICT: {label}{detail}\n{tail_line}", color
 
     def refresh_fourier_analysis(self, psd, allan, verdict=None):
         """Populate the tab from the PSD + Allan results computed at Stop
@@ -2331,7 +2555,12 @@ class Widget(QWidget):
 
     # this function saves the IV data to a text file.
     def save_data_to_file(self,filename_prefix, data_to_store):
-        ts = int(datetime.timestamp(datetime.now()) * 1000)
+        filename_prefix = data_paths.resolve_prefix(filename_prefix)
+        # ts string carries the session token: capture time first, then
+        # _s<sessionId> correlating all files of one GUI run (crash-resume
+        # days produce several sessions).
+        ts = f"{int(datetime.timestamp(datetime.now()) * 1000)}" \
+             f"{session_journal.tag()}"
         with open(f"{filename_prefix}_{ts}.csv", 'w', newline='') as csvfile:
             writer = csv.writer(csvfile)
             for data in data_to_store:
@@ -2339,7 +2568,9 @@ class Widget(QWidget):
 
     def save_iv_ascii(self,prefix, x, y):
         #ts = int(datetime.datetime.now().timestamp() * 1000)
-        ts = int(datetime.timestamp(datetime.now()) * 1000)
+        prefix = data_paths.resolve_prefix(prefix)
+        ts = f"{int(datetime.timestamp(datetime.now()) * 1000)}" \
+             f"{session_journal.tag()}"
         filename = f"{prefix}_{ts}.txt"
 
         with open(filename, "w") as f:
@@ -2378,9 +2609,11 @@ class Widget(QWidget):
 
         header_str = "\n".join(header)
 
-        # Pad header to multiple of 4 bytes
+        # Pad header to multiple of 4 bytes.  The GSF spec requires at least
+        # one NUL terminator, so an already-aligned header takes a full 4 --
+        # never 0, or Gwyddion cannot find the header end and rejects the file.
         header_bytes = header_str.encode("utf-8")
-        padding = (4 - (len(header_bytes) % 4)) % 4
+        padding = 4 - (len(header_bytes) % 4)
         header_bytes += b"\0" * padding
 
         with open(filename, "wb") as f:
@@ -2392,9 +2625,11 @@ class Widget(QWidget):
     # ----------------------
 
     def save_scan_image(self, prefix):
+        prefix = data_paths.resolve_prefix(prefix)
         print(prefix)
         x_start, x_end, x_res, y_start, y_end, y_res = self.stm.scan_config
-        ts = int(datetime.timestamp(datetime.now()) * 1000)
+        ts = f"{int(datetime.timestamp(datetime.now()) * 1000)}" \
+             f"{session_journal.tag()}"
         np.savetxt(f"{prefix}_adc_{ts}.txt", self.stm.scan_adc)
         print(f"{prefix}_adc_{ts}.txt")
         #now as tiff
@@ -2564,12 +2799,18 @@ class Widget(QWidget):
         # bench 2026-07-14).  Dragging streams DACZ through the same
         # throttled sender as the Configuration-tab drag bar; incoming
         # stream updates leave the handle alone while it is being dragged.
-        self._cs_zslider = QSlider(Qt.Vertical)
+        self._cs_zslider = PrecisionSlider(Qt.Vertical)
         self._cs_zslider.setRange(0, 65535)
         self._cs_zslider.setValue(32768)
         self._cs_zslider.setSingleStep(10)
         self._cs_zslider.setPageStep(1000)
         self._cs_zslider.setMinimumWidth(28)
+        self._cs_zslider.setToolTip(
+            "Wheel: 10 LSB - Shift: 1 LSB (fine) - Ctrl: 100 - "
+            "Ctrl+Shift: 1000 (jump)\n"
+            "Shift+drag: geared fine drag, 1 LSB per pixel "
+            "(Ctrl+Shift+drag: 5 LSB/px)\n"
+            "Plain drag: normal coarse slider drag")
         # Inverted appearance so the MAX (high DAC = toward sample = more
         # current, per the firmware approach sweeping DAC up) sits at the
         # BOTTOM.  Result: dragging DOWN moves the tip toward the sample
@@ -2679,7 +2920,7 @@ class Widget(QWidget):
         # Wire ScanController → frame log / LiveRaster / gauge / status.
         # The frame logger MUST be connected first: Qt invokes slots in
         # connection order, so every line is on disk before it is drawn.
-        self._frame_logger = frame_logger.FrameLogger(log_dir="scans")
+        self._frame_logger = frame_logger.FrameLogger()  # -> data_paths day folder
         self._scan_ctrl.lineReady.connect(self._frame_logger.on_line)
         self._scan_ctrl.lineReady.connect(self._cs_raster.update_line)
         self._cs_frames_since_run = 0
@@ -2858,13 +3099,20 @@ class Widget(QWidget):
         self._ss_active = False
         self._cs_btn_super.setEnabled(True)
         mode = self._cs_super_mode.currentData()
+        # Optional Gwyddion-style row alignment of each input frame before
+        # registration/stacking (raster-bar checkbox); .frames stay raw.
+        ra_on, ra_method = self._cs_raster.row_align_params()
+        frames = ([live_raster._row_align(f, ra_method)
+                   for f in self._ss_frames] if ra_on else self._ss_frames)
         try:
-            hi, shifts, stats = superscan.superscan(self._ss_frames, mode=mode)
+            hi, shifts, stats = superscan.superscan(frames, mode=mode)
         except Exception as e:
             self._cs_status_lbl.setText(f"Superscan failed: {e}")
             return
         session_journal.note(
-            f"superscan {mode}: {stats['n_frames']} frames, "
+            f"superscan {mode}"
+            + (f" (row-align: {ra_method})" if ra_on else "")
+            + f": {stats['n_frames']} frames, "
             f"max drift {stats['max_drift_px']:.1f}px, "
             f"std {stats['single_frame_std']:.0f}->{stats['superscan_std']:.0f}",
             src="agent")
@@ -2907,7 +3155,8 @@ class Widget(QWidget):
         save = QPushButton("Save .gsf (scaled) + .npz")
         def _save():
             ts = int(datetime.timestamp(datetime.now()) * 1000)
-            base = os.path.join("scans", f"superscan_{ts}")
+            base = data_paths.day_path(
+                f"superscan_{ts}{session_journal.tag()}")
             # A few saturation-rail pixels (~±102 nA) blow Gwyddion's linear
             # min->max color range, crushing the real 0.5-1 nA signal to
             # black (operator 2026-07-15).  The .gsf is the VIEW copy:

@@ -16,19 +16,27 @@ import json
 import os
 import time
 
+import data_paths
+import session_journal
+
 _f = None
 _path = None
 _rows = 0
 
 
-def start(settings, log_dir="scans"):
-    """Open a new .scst/.json pair; returns the log path."""
+def start(settings, log_dir=None):
+    """Open a new .scst/.json pair; returns the log path.  ``log_dir``
+    defaults to today's data_paths day folder."""
     global _f, _path, _rows
     stop()
+    log_dir = log_dir or data_paths.day_dir()
     os.makedirs(log_dir, exist_ok=True)
-    _path = os.path.join(log_dir, f"scst_{int(time.time() * 1000)}")
+    _path = os.path.join(
+        log_dir, f"scst_{int(time.time() * 1000)}{session_journal.tag()}")
     with open(_path + ".json", "w") as sf:
-        json.dump({"started": time.time(), "settings": settings}, sf,
+        json.dump({"started": time.time(),
+                   "session": session_journal.session_id(),
+                   "settings": settings}, sf,
                   indent=2)
     _f = open(_path + ".scst", "w", buffering=1)   # line-buffered
     _rows = 0

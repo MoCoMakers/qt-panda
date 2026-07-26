@@ -4,11 +4,134 @@ import numpy as np
 from datetime import datetime
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QPushButton, QFileDialog
+    QLabel, QPushButton
 )
 from PySide6.QtCore import Slot, Signal, QSettings
 import pyqtgraph as pg
 import tifffile
+
+import data_paths
+import session_journal
+
+
+ROW_ALIGN_METHODS = ("Median of diffs", "Median", "Poly deg 5")
+
+
+def _row_align(arr, method):
+    """Gwyddion-style per-row background removal (display/post only — raw
+    buffers and .frames stay verbatim).
+
+    Median          — subtract each row's median (kills row offsets AND any
+                      real slow-axis gradient).
+    Median of diffs — offset each row by the cumulative median of its
+                      point-wise difference to the previous row; robust to
+                      features crossing rows, preserves in-row structure.
+    Poly deg 5      — subtract a degree-5 polynomial fitted to each row
+                      (also flattens in-row bow/tilt).
+    """
+    a = np.asarray(arr, dtype=np.float64).copy()
+    if a.ndim != 2 or a.shape[0] < 2:
+        return arr
+    if method == "Median":
+        a -= np.median(a, axis=1, keepdims=True)
+    elif method == "Median of diffs":
+        d = np.median(np.diff(a, axis=0), axis=1)
+        # Accumulate only jumps that beat the in-row pixel noise: a plain
+        # cumsum random-walks on noise-dominated frames and paints a fake
+        # vertical ramp.  Expected noise of a median-of-W-diffs is
+        # ~1.253*sigma_pix*sqrt(2)/sqrt(W); gate at 5x that (a single
+        # false pass would step every row after it, so keep P tiny).
+        res = a - np.median(a, axis=1, keepdims=True)
+        sigma_pix = 1.4826 * np.median(np.abs(res))
+        gate = 5.0 * 1.253 * sigma_pix * np.sqrt(2.0 / a.shape[1])
+        d = np.where(np.abs(d) > gate, d, 0.0)
+        off = np.concatenate(([0.0], np.cumsum(d)))
+        a -= (off - off.mean())[:, None]
+    elif method == "Poly deg 5":
+        x = np.linspace(-1.0, 1.0, a.shape[1])
+        V = np.vander(x, 6)
+        coef, *_ = np.linalg.lstsq(V, a.T, rcond=None)
+        a -= (V @ coef).T
+    return a.astype(np.float32)
+
+
+def _sweep_residual(D, U, maxshift=32):
+    """Return (dx, dy, r): the shift such that U[row+dy, col+dx] best
+    matches D[row, col] — i.e. the drift-corr spin-box increment that would
+    align the up-sweep image U onto the down-sweep image D — plus the
+    correlation r at that shift.  Separable search, wrap edges tolerated."""
+    Dm = D - D.mean()
+    def score(A):
+        Am = A - A.mean()
+        den = Dm.std() * Am.std()
+        return float((Dm * Am).mean() / den) if den else -2.0
+    # keep shifts under half the axis length: a full-wrap roll is an
+    # identity and would tie with (and mask) the true shift
+    my = min(maxshift, (D.shape[0] - 1) // 2)
+    mx = min(maxshift, (D.shape[1] - 1) // 2)
+    best_dy, b = 0, -2.0
+    for dy in range(-my, my + 1):
+        s = score(np.roll(U, -dy, axis=0))
+        if s > b:
+            b, best_dy = s, dy
+    Ur = np.roll(U, -best_dy, axis=0)
+    best_dx, b2 = 0, -2.0
+    for dx in range(-mx, mx + 1):
+        s = score(np.roll(Ur, -dx, axis=1))
+        if s > b2:
+            b2, best_dx = s, dx
+    return best_dx, best_dy, b2
+
+
+class SweepSnapshotWindow(QWidget):
+    """Floating window with the Err image frozen at the two sweep boundaries:
+    left panel is the frame as the down half completed, right panel as the up
+    half terminated (line-counter wrap).  Fed by LiveRaster.update_line; each
+    panel keeps the levels/LUT that were on screen at its capture instant."""
+
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Compare Sweeps")
+        self.resize(900, 500)
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(4, 4, 4, 4)
+        glw = pg.GraphicsLayoutWidget()
+        lay.addWidget(glw)
+        self._lbls, self._imgs, self._vbs = {}, {}, {}
+        for col, (key, title) in enumerate((("down", "End of down sweep"),
+                                            ("up", "End of up sweep"))):
+            self._lbls[key] = glw.addLabel(f"{title} — waiting…",
+                                           row=0, col=col)
+            vb = glw.addViewBox(row=1, col=col)
+            vb.setAspectLocked(True)
+            vb.invertY(True)
+            img = pg.ImageItem()
+            img.setOpts(axisOrder='row-major')
+            vb.addItem(img)
+            self._vbs[key], self._imgs[key] = vb, img
+        self._lbl_rec = glw.addLabel(
+            "Recommended drift corr: waiting for a full cycle…",
+            row=2, col=0, colspan=2)
+        self.last_rec = None
+
+    def set_recommendation(self, dx, dy, r):
+        """Update the recommended spin-box values (absolute, i.e. current
+        setting + measured residual between the two panels)."""
+        self.last_rec = (dx, dy, r)
+        self._lbl_rec.setText(
+            f"Recommended drift corr:  X = {dx}   Y = {dy}   "
+            f"(match r={r:.2f})")
+
+    def take(self, key, arr, levels, lut):
+        img = self._imgs[key]
+        img.setImage(arr, autoLevels=False)
+        img.setRect(pg.QtCore.QRectF(0, 0, arr.shape[1], arr.shape[0]))
+        img.setLevels(levels)
+        img.setLookupTable(lut)
+        title = "End of down sweep" if key == "down" else "End of up sweep"
+        stamp = datetime.now().strftime("%H:%M:%S")
+        self._lbls[key].setText(f"{title} — {stamp}")
+        self._vbs[key].autoRange(padding=0.02)
 
 
 class LiveRaster(QWidget):
@@ -68,6 +191,15 @@ class LiveRaster(QWidget):
         # current restores a pixel-perfect match (r=+1.0000).
         self._lin_mode = False
         self._setlog = 0
+
+        self._snap_win = None
+
+        # Up/down sweep drift correction (display-time, pixels): descending-
+        # half lines are shifted by (-dx, -dy) onto the ascending pass's
+        # frame of reference before painting.  0/0 = verbatim, no correction.
+        # Raw .frames on disk are never touched.  Persisted in QSettings.
+        self._drift_dx = int(self._settings.value("drift_corr_x", 0))
+        self._drift_dy = int(self._settings.value("drift_corr_y", -4))
 
         self._build_ui()
 
@@ -130,10 +262,52 @@ class LiveRaster(QWidget):
         self._rb_lvl_cont.setToolTip("Auto-level on every line — live level tracking")
         self._rb_lvl_off.setToolTip("Never auto-level — use the histogram sliders manually")
 
-        self._btn_folder = QPushButton("Change folder…")
-        self._btn_folder.setMaximumWidth(110)
-        self._btn_folder.clicked.connect(self._choose_folder)
-        bar.addWidget(self._btn_folder)
+        from PySide6.QtWidgets import QSpinBox, QCheckBox, QComboBox
+        self._chk_rowalign = QCheckBox("Row align")
+        self._chk_rowalign.setToolTip(
+            "Apply Gwyddion-style row alignment to the displayed Z/Err "
+            "images and to superscan input frames (raw data untouched)")
+        self._chk_rowalign.setChecked(
+            self._settings.value("row_align_on", "false") == "true")
+        bar.addWidget(self._chk_rowalign)
+        self._cmb_rowalign = QComboBox()
+        self._cmb_rowalign.addItems(ROW_ALIGN_METHODS)
+        self._cmb_rowalign.setCurrentText(
+            str(self._settings.value("row_align_method",
+                                     ROW_ALIGN_METHODS[0])))
+        self._cmb_rowalign.setMaximumWidth(130)
+        bar.addWidget(self._cmb_rowalign)
+        self._chk_rowalign.toggled.connect(self._row_align_changed)
+        self._cmb_rowalign.currentTextChanged.connect(
+            self._row_align_changed)
+
+        bar.addWidget(QLabel("Drift corr X:"))
+        self._sb_drift_x = QSpinBox()
+        self._sb_drift_x.setRange(-128, 128)
+        self._sb_drift_x.setValue(self._drift_dx)
+        self._sb_drift_x.setToolTip(
+            "Shift up-sweep lines this many pixels along the fast axis to "
+            "align them with the down sweep (0 = off)")
+        bar.addWidget(self._sb_drift_x)
+        bar.addWidget(QLabel("Y:"))
+        self._sb_drift_y = QSpinBox()
+        self._sb_drift_y.setRange(-128, 128)
+        self._sb_drift_y.setValue(self._drift_dy)
+        self._sb_drift_y.setToolTip(
+            "Shift up-sweep lines this many rows to align them with the "
+            "down sweep (0 = off)")
+        bar.addWidget(self._sb_drift_y)
+        for sb in (self._sb_drift_x, self._sb_drift_y):
+            sb.valueChanged.connect(self._set_drift)
+
+        self._btn_snaps = QPushButton("Compare Sweeps")
+        self._btn_snaps.setMaximumWidth(110)
+        self._btn_snaps.setToolTip(
+            "Open a window that freezes the Err image at the end of each "
+            "down sweep and each up sweep, with a recommended drift-corr "
+            "X/Y computed every cycle")
+        self._btn_snaps.clicked.connect(self._show_snap_window)
+        bar.addWidget(self._btn_snaps)
 
         self._btn_save = QPushButton("Save frame")
         self._btn_save.setMaximumWidth(80)
@@ -262,7 +436,17 @@ class LiveRaster(QWidget):
         # (The earlier per-cycle flip assumed one direction per cycle and
         # painted every band twice, mirrored — the operator's "accordion".)
         raw = line_number % (2 * self._H)
-        if raw < self._last_raw_row and self._rb_lvl_cycle.isChecked():
+        wrapped = raw < self._last_raw_row
+        half_done = self._last_raw_row < self._H <= raw
+        # Snapshot the Err frame at the sweep boundaries BEFORE this line is
+        # painted (the buffer still holds the just-completed sweep) and before
+        # any autolevel, so each panel shows exactly what was on screen.
+        if self._snap_win is not None and self._snap_win.isVisible():
+            if half_done:
+                self._take_snapshot("down")
+            if wrapped:
+                self._take_snapshot("up")
+        if wrapped and self._rb_lvl_cycle.isChecked():
             # cycle wrapped: one full up+down Y triangle completed
             self._do_autolevel()
         self._last_raw_row = raw
@@ -271,14 +455,30 @@ class LiveRaster(QWidget):
         if len(z_arr) < 2 * half:
             return  # short/garbled frame; skip
 
-        self._z_trace[row, :]   = z_arr[:half].astype(np.float32)
-        self._z_retrace[row, :] = z_arr[half:2 * half][::-1].astype(np.float32)
-        self._e_trace[row, :]   = err_arr[:half].astype(np.float32)
-        self._e_retrace[row, :] = err_arr[half:2 * half][::-1].astype(np.float32)
+        zt, zr = z_arr[:half], z_arr[half:2 * half][::-1]
+        et, er = err_arr[:half], err_arr[half:2 * half][::-1]
 
-        self._img_zt.setImage(self._z_trace,   autoLevels=False)
+        # Drift correction: re-target descending-half (up-sweep) lines onto
+        # the ascending pass's frame of reference.  With 0/0 this block is a
+        # no-op and painting is verbatim.
+        if raw >= self._H:
+            row -= self._drift_dy
+            if not (0 <= row < self._H):
+                return  # corrected row falls outside the frame; drop
+            if self._drift_dx:
+                zt = np.roll(zt, -self._drift_dx)
+                zr = np.roll(zr, -self._drift_dx)
+                et = np.roll(et, -self._drift_dx)
+                er = np.roll(er, -self._drift_dx)
+
+        self._z_trace[row, :]   = zt.astype(np.float32)
+        self._z_retrace[row, :] = zr.astype(np.float32)
+        self._e_trace[row, :]   = et.astype(np.float32)
+        self._e_retrace[row, :] = er.astype(np.float32)
+
+        self._img_zt.setImage(self._z_disp(self._z_trace), autoLevels=False)
         self._img_zr.setImage(self._z_retrace, autoLevels=False)
-        self._img_et.setImage(self._e_display(self._e_trace),   autoLevels=False)
+        self._img_et.setImage(self._e_disp(self._e_trace), autoLevels=False)
         self._img_er.setImage(self._e_display(self._e_retrace), autoLevels=False)
 
         # Continuous level tracking: re-level every line when selected.
@@ -293,10 +493,64 @@ class LiveRaster(QWidget):
     # Internal
     # -------------------------------------------------------------------------
 
+    def _set_drift(self):
+        self._drift_dx = self._sb_drift_x.value()
+        self._drift_dy = self._sb_drift_y.value()
+        self._settings.setValue("drift_corr_x", self._drift_dx)
+        self._settings.setValue("drift_corr_y", self._drift_dy)
+
+    def _show_snap_window(self):
+        if self._snap_win is None:
+            self._snap_win = SweepSnapshotWindow()
+        self._snap_win.show()
+        self._snap_win.raise_()
+
+    def _take_snapshot(self, key):
+        arr = np.array(self._e_disp(self._e_trace), copy=True)
+        self._snap_win.take(
+            key, arr,
+            self._hist_e.getLevels(),
+            self._hist_e.gradient.getLookupTable(512))
+        # Once per cycle (at the up capture) compute the residual shift
+        # between the two corrected panels; the recommendation is absolute:
+        # current spin values + residual, so "dialed in" reads back your
+        # own settings.
+        if key == "down":
+            self._snap_down = arr
+        elif (getattr(self, "_snap_down", None) is not None
+                and self._snap_down.shape == arr.shape):
+            dx, dy, r = _sweep_residual(self._snap_down, arr)
+            self._snap_win.set_recommendation(
+                self._drift_dx + dx, self._drift_dy + dy, r)
+
+    def _row_align_changed(self, *_):
+        self._settings.setValue(
+            "row_align_on",
+            "true" if self._chk_rowalign.isChecked() else "false")
+        self._settings.setValue(
+            "row_align_method", self._cmb_rowalign.currentText())
+        self._push_all_images(auto=True)
+
+    def row_align_params(self):
+        """(enabled, method) — read by the superscan build in main.py."""
+        return (self._chk_rowalign.isChecked(),
+                self._cmb_rowalign.currentText())
+
+    def _z_disp(self, arr):
+        if self._chk_rowalign.isChecked():
+            return _row_align(arr, self._cmb_rowalign.currentText())
+        return arr
+
+    def _e_disp(self, arr):
+        a = self._e_display(arr)
+        if self._chk_rowalign.isChecked():
+            a = _row_align(a, self._cmb_rowalign.currentText())
+        return a
+
     def _push_all_images(self, auto: bool):
-        self._img_zt.setImage(self._z_trace,   autoLevels=auto)
+        self._img_zt.setImage(self._z_disp(self._z_trace), autoLevels=auto)
         self._img_zr.setImage(self._z_retrace, autoLevels=auto)
-        self._img_et.setImage(self._e_display(self._e_trace),   autoLevels=auto)
+        self._img_et.setImage(self._e_disp(self._e_trace), autoLevels=auto)
         self._img_er.setImage(self._e_display(self._e_retrace), autoLevels=auto)
 
     def _mirror_z(self):
@@ -337,23 +591,13 @@ class LiveRaster(QWidget):
         self._hist_z.setLevels(float(lo_z), float(hi_z))
         self._hist_e.setLevels(float(lo_e), float(hi_e))
 
-    def _saved_folder(self) -> str:
-        return self._settings.value("save/folder", "", type=str)
-
-    def _choose_folder(self):
-        folder = QFileDialog.getExistingDirectory(self, "Save frames to…")
-        if folder:
-            self._settings.setValue("save/folder", folder)
-
     def _do_save(self):
-        folder = self._saved_folder()
-        if not folder or not os.path.isdir(folder):
-            self._choose_folder()
-            folder = self._saved_folder()
-        if not folder:
-            return
+        # Convention, always: frames go to today's centralized data folder.
+        # (Operator decision 2026-07-26 — no folder picking; the sticky
+        # QSettings target is how the stray 'Saved' folder happened.)
+        folder = data_paths.day_dir()
 
-        ts   = datetime.now().strftime("%Y%m%d_%H%M%S")
+        ts   = datetime.now().strftime("%Y%m%d_%H%M%S") + session_journal.tag()
         base = self._settings.value("save/basename", "scan", type=str)
 
         tifffile.imwrite(f"{folder}/{base}_z_trace_{ts}.tiff",     self._z_trace)

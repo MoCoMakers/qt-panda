@@ -21,8 +21,9 @@ formatter = logging.Formatter(
 # Persistent file log so port-open attempts (and everything else this module
 # logs) survive past the GUI's txtLog pane -- checkable with no session
 # running and no one watching the screen (e.g. "did it even try COM3?").
-os.makedirs("logs", exist_ok=True)
-_file_handler = logging.FileHandler(os.path.join("logs", "stm.log"))
+# Lives in the launch day's data folder (one stm.log per day-of-launch).
+import data_paths
+_file_handler = logging.FileHandler(data_paths.day_path("stm.log"))
 _file_handler.setFormatter(formatter)
 if not any(isinstance(h, logging.FileHandler) for h in logger.handlers):
     logger.addHandler(_file_handler)
@@ -664,8 +665,8 @@ class STM(object):
         # Note: this is a parsed capture, not verbatim — the grid protocol
         # is binary; a byte-level tee is a future refinement.
         try:
-            os.makedirs("scans", exist_ok=True)
-            base = os.path.join("scans", f"gspc_{int(time.time() * 1000)}")
+            base = data_paths.day_path(
+                f"gspc_{int(time.time() * 1000)}{session_journal.tag()}")
             np.savez_compressed(base + ".npz", grid=grid_data)
             with open(base + ".json", "w") as sf:
                 import json as _json

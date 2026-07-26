@@ -51,6 +51,41 @@ language:
 
 *(The underlying HTTP API for scripting is documented separately in `software/pc/CHANGELOG.md` and the code.)*
 
+## Your data — where it goes, and replaying it
+
+Everything the instrument records lands **automatically** in one place:
+`TeamUpdate/data/<2026-Jul-26>/` — one flat, self-describing folder per
+day, created on first use (session journal, 200 Hz status, 25 kHz raw
+ISR tap, scan frames, images, screenshots — all timestamped and
+session-tagged). `software/pc/qtpanda/data_paths.py` is the single path
+authority; nothing saves anywhere else.
+
+Review any day, fully offline (`software/pc/qtpanda/replay/` — or the
+GUI's **Review Day** button):
+
+```bash
+cd software/pc/qtpanda/replay
+python sweep_player.py 2026-Jul-15      # A/B sweep player: scrub, compare, export, GIF
+python daylog.py 2026-Jul-15            # day inventory; --at <time>; --coverage
+python make_bundle.py 2026-Jul-15 --zip # self-contained team bundle (recipient: python main.py)
+```
+
+**The day's narrative (default: the Claude skill).** Ask a Claude
+session to `/timeline 2026-Jul-15` — it consolidates the day and reads
+the journals, then writes `TIMELINE.json` (labeled activity bands,
+milestones, a bracketed change-event report — operator notes carried
+verbatim) which the player renders. This is the intended, primary path.
+A linter (`timeline_doc.py <day> --check`) gates every generated file
+before the viewer sees it. The same AI answers forensic questions
+("what was recording at 03:28:01?") via `daylog.py --at`.
+
+*Fallback, no LLM available:* `python timeline_doc.py <day> --draft
+--promote` writes a lint-clean timeline with machine labels — complete
+but plain; rerunning the Claude skill later upgrades it in place.
+
+Details: `docs/replay-usability-guide.md` and
+`docs/replay-feature-scope.md`.
+
 ## Firmware
 
 The firmware is an Arduino sketch: open

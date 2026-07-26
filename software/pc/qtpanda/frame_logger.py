@@ -29,6 +29,7 @@ import time
 
 import numpy as np
 
+import data_paths
 import session_journal
 
 _REC_HEAD = struct.Struct('<BdHH')   # magic, pc_time, line_number, pixels
@@ -36,7 +37,8 @@ _MAGIC = 0x46                        # 'F'
 
 
 class FrameLogger:
-    def __init__(self, log_dir="scans"):
+    def __init__(self, log_dir=None):
+        # None -> today's data_paths folder, resolved at each start()
         self.log_dir = log_dir
         self._f = None
         self.base_path = None
@@ -52,8 +54,11 @@ class FrameLogger:
         of everything needed for faithful replay (geometry, feedback, bias,
         calibration...).  Closes any prior run first."""
         self.stop()
-        os.makedirs(self.log_dir, exist_ok=True)
-        base = os.path.join(self.log_dir, f"scan_{int(time.time() * 1000)}")
+        log_dir = self.log_dir or data_paths.day_dir()
+        os.makedirs(log_dir, exist_ok=True)
+        base = os.path.join(
+            log_dir,
+            f"scan_{int(time.time() * 1000)}{session_journal.tag()}")
         self.base_path = base
         self._f = open(base + ".frames", "ab")
         self.n_frames = 0
@@ -62,6 +67,7 @@ class FrameLogger:
         self._wrap = None
         self._sidecar = {
             "t_start": time.time(),
+            "session": session_journal.session_id(),
             "settings": settings or {},
             "format": "F:<BdHH then z:int32[pixels] then err:int32[pixels], "
                       "little-endian",

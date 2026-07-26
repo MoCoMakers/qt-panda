@@ -7,7 +7,9 @@ documentation/docs-for-ai/StabilityResearch/
 
   * TUNNELING_LIKE     signed |mean| >= 3*sigma of the floor, unsaturated,
                        one-sided distribution — the record the pipeline wants.
-  * CONTACT            ADC-railed samples present (hard tip-sample contact).
+  * CONTACT            sustained ADC railing (>=5% of samples) — hard
+                       tip-sample contact; isolated rail spikes are flagged
+                       but do not force this verdict.
   * EMI_CONTAMINATED   bipolar, zero-mean excursion bursts (bench activity).
   * NOISE_ONLY         statistically identical to the electronics floor.
   * INSUFFICIENT       too short to judge.
@@ -41,6 +43,13 @@ import stab_metrics
 ADC_RAIL = 32767
 
 # Acceptance thresholds (see proposal doc, findings F2/F3/F5).
+# CONTACT requires SUSTAINED railing: below this fraction, railed samples
+# are transient spikes (tip events) and the session is judged on the free
+# samples — a single spike must not override a clean pA-level recording
+# (bench 2026-07-24: verdict said "railed against surface" over a session
+# with solid 1e-12 A signal).
+RAIL_CONTACT_FRACTION = 0.05
+TAIL_SECONDS = 60.0             # separately grade the final stretch
 TUNNELING_MEAN_SIGMAS = 3.0     # signed |mean| must clear this many sigma
 EMI_EXCURSION_SIGMAS = 5.0      # |I - offset| beyond this = excursion
 EMI_MIN_EXCURSIONS = 5          # fewer than this is just tail samples
@@ -88,8 +97,13 @@ def started_at(path):
         return None
 
 
-def analyze(path):
-    """Grade one session CSV.  Returns the verdict dict."""
+def analyze(path, since_ms=None):
+    """Grade one session CSV.  Returns the verdict dict.
+
+    since_ms: grade only samples with time_millis > since_ms (firmware
+    clock).  The GUI passes the Stability tab's Clear watermark here so
+    Clear genuinely resets the verdict, not just the histogram — the CSV
+    itself is session-cumulative and keeps everything."""
     v = {
         "file": os.path.abspath(path),
         "started": started_at(path),
@@ -98,6 +112,12 @@ def analyze(path):
         "flags": [],
     }
     d = load_session(path)
+    if d is not None and since_ms is not None:
+        m = d["time_millis"] > since_ms
+        d = {k: a[m] for k, a in d.items()}
+        v["flags"].append(
+            f"graded post-Clear window only ({int(m.sum())} of "
+            f"{m.size} samples)")
     if d is None or d["current_A"].size < MIN_SAMPLES:
         v["n"] = 0 if d is None else int(d["current_A"].size)
         v["flags"].append("too little data to judge")
@@ -129,9 +149,15 @@ def analyze(path):
              "direction": "release" if railed[i] else "contact"}
             for i in np.where(np.diff(railed.astype(int)) != 0)[0]
         ]
-        v["flags"].append(
-            f"{rail_frac:.0%} of samples at ADC full scale - contact depth "
-            "unbounded (true current >= 102.4 nA)")
+        if rail_frac >= RAIL_CONTACT_FRACTION:
+            v["flags"].append(
+                f"{rail_frac:.0%} of samples at ADC full scale - contact "
+                "depth unbounded (true current >= 102.4 nA)")
+        else:
+            v["flags"].append(
+                f"{int(railed.sum())} transient ADC-rail spike(s) "
+                f"({rail_frac:.2%}) - treated as tip events, not "
+                "sustained contact")
 
     # ---- floor statistics (non-railed samples) ---------------------------
     free = amps[~railed]
@@ -174,12 +200,12 @@ def analyze(path):
         "signed_mean_over_sigma": mean_over_sigma,
         "required_sigmas": TUNNELING_MEAN_SIGMAS,
         "skew": skew,
-        "unsaturated": rail_frac == 0.0,
+        "unsaturated": rail_frac < RAIL_CONTACT_FRACTION,
         "bias_on": v["bias_on"],
     }
 
-    # ---- derived metrics (only meaningful without contact steps) ---------
-    if rail_frac == 0.0:
+    # ---- derived metrics (only meaningful without sustained contact) -----
+    if rail_frac < RAIL_CONTACT_FRACTION:
         pm = stab_metrics.pm_per_ln(WORK_FUNCTION_EV)
         v["drift"] = stab_metrics.drift_metrics(
             d["time_millis"], amps, pm)
@@ -200,8 +226,39 @@ def analyze(path):
                     allan["sigma_min"], float(free.mean()), pm),
             }
 
+    # ---- tail verdict: the recording is session-cumulative, so the overall
+    # grade can be dominated by long-past contact episodes.  Grade the final
+    # TAIL_SECONDS separately to answer "what was it doing at Stop?"
+    # (bench 2026-07-24: 11% overall rail -> CONTACT, but the last 90 s were
+    # 100% clean regulated pA tunneling).
+    mtail = t >= t[-1] - TAIL_SECONDS
+    if mtail.sum() >= MIN_SAMPLES:
+        tr = float(railed[mtail].mean())
+        tf = amps[mtail & ~railed]
+        tmed = float(np.median(np.abs(tf))) * 1e12 if tf.size else None
+        if tf.size >= MIN_SAMPLES:
+            toff = float(np.median(tf))
+            tsig = float(np.median(np.abs(tf - toff))) * 1.4826
+            tsig = tsig if tsig > 0 else float(tf.std())
+            tmos = abs(float(tf.mean())) / tsig if tsig > 0 else 0.0
+        else:
+            tmos = 0.0
+        if tr >= RAIL_CONTACT_FRACTION:
+            tv = "CONTACT"
+        elif v["bias_on"] and tmos >= TUNNELING_MEAN_SIGMAS:
+            tv = "TUNNELING_LIKE"
+        else:
+            tv = "NOISE_ONLY"
+        v["tail"] = {
+            "seconds": float(min(TAIL_SECONDS, t[-1] - t[0])),
+            "rail_fraction": tr,
+            "median_pA": tmed,
+            "mean_over_sigma": tmos,
+            "verdict": tv,
+        }
+
     # ---- verdict ----------------------------------------------------------
-    if rail_frac > 0:
+    if rail_frac >= RAIL_CONTACT_FRACTION:
         v["verdict"] = "CONTACT"
     elif (v["bias_on"] and not emi
             and mean_over_sigma >= TUNNELING_MEAN_SIGMAS):
