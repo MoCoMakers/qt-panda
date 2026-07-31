@@ -1,5 +1,9 @@
 """timeline_doc — the per-day timeline consolidation document (TIMELINE.json).
 
+Part of the day-wrap-up chain — authoritative runbook: TIMELINE_SKILL.md
+(this folder).  Order: sweep_index.py → /timeline skill (drives this
+tool) → daylog.py --write → scan-notes summary → make_bundle.py.
+
 Convention (loaded by sweep_player, written per day folder):
 
     <day-folder>/TIMELINE.json
@@ -303,6 +307,16 @@ def main():
         print(f"OK — {len(loaded['regions'])} regions, "
               f"{len(loaded['events'])} events; PLAYER-LOAD OK")
         return 0
+    # scanning regions come from .sweeps.json indexes; a .frames without
+    # one silently vanishes from the draft (bit us 2026-07-30)
+    missing = [n for n in os.listdir(folder) if n.endswith(".frames")
+               and not os.path.isfile(
+                   os.path.join(folder, n[:-7] + ".sweeps.json"))]
+    if missing:
+        print(f"WARNING: {len(missing)} .frames file(s) have no "
+              f".sweeps.json — their scans will be MISSING from the "
+              f"draft.  Run: python sweep_index.py {folder}",
+              file=sys.stderr)
     draft = build_draft(folder)
     out = os.path.join(folder, "TIMELINE.draft.json")
     with open(out, "w") as f:

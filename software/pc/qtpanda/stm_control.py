@@ -94,16 +94,77 @@ Scan: {}
 Time: {}""".format(self.bias, self.dac_z, self.dac_x, self.dac_y, self.adc, self.steps, self.is_approaching,  self.is_const_current, self.is_scanning, self.time_millis)
 
 
+def describe_open_failure(device, exc):
+    """Actionable one-liner for a failed serial open (cross-OS).
+
+    Distinguishes the bench-recurrent cases (2026-07-30): a port held by
+    a crashed-but-still-alive GUI process - where power cycling the
+    Teensy does NOT help - vs. POSIX permissions vs. device absent."""
+    msg = str(exc)
+    held = ("Access is denied" in msg or "PermissionError" in msg   # Windows
+            or "Device or resource busy" in msg or "EBUSY" in msg   # POSIX
+            or "Resource busy" in msg)                              # macOS
+    if held:
+        pids = _other_python_pids()
+        who = (f" (candidate stale python PIDs: {', '.join(pids)})"
+               if pids else "")
+        return (f"{device} is held by another process - usually a crashed "
+                f"GUI instance still running{who}. Kill it, then reopen. "
+                f"Power cycling the Teensy will NOT free the port; the OS "
+                f"holds it on the PC side.")
+    if "Permission denied" in msg or "EACCES" in msg:               # POSIX
+        return (f"Permission denied on {device} - on Linux this usually "
+                f"means your user is not in the serial group (dialout/"
+                f"uucp), not a stale holder. Fix the group, or check for "
+                f"another process holding the port.")
+    if ("could not open port" in msg or "FileNotFoundError" in msg
+            or "No such file or directory" in msg):
+        return (f"{device} not found - USB unplugged, or the Teensy "
+                f"re-enumerated under a different port name (check the "
+                f"port dropdown / Device Manager / dmesg).")
+    return msg
+
+
+def _other_python_pids():
+    """Best-effort list of other python PIDs (no deps, cross-OS)."""
+    import subprocess
+    me = str(os.getpid())
+    try:
+        if os.name == "nt":
+            out = subprocess.run(
+                ["tasklist", "/FI", "IMAGENAME eq python.exe", "/FO",
+                 "CSV", "/NH"], capture_output=True, text=True,
+                timeout=3).stdout
+            pids = []
+            for ln in out.splitlines():
+                parts = [p.strip('"') for p in ln.split('","')]
+                if len(parts) >= 2 and parts[1].isdigit() and parts[1] != me:
+                    pids.append(parts[1])
+            return pids
+        out = subprocess.run(["pgrep", "-f", "python"],
+                             capture_output=True, text=True, timeout=3).stdout
+        return [p for p in out.split() if p.isdigit() and p != me]
+    except Exception:
+        return []
+
+
 class STM(object):
     def __init__(self, device=None):
         self.is_opened = False
         self.busy = False
+        # Consecutive unparseable GSTS replies - drives the one-shot
+        # "power cycle the microcontroller?" hint (see get_status).  A
+        # firmware left mid-binary-dump by a crashed session (e.g. the
+        # 2026-07-30 grid-spectro crash) streams garbage until power
+        # cycle; no PC-side action can recover it.
+        self._garbage_streak = 0
+        self._powercycle_hinted = False
         # True once a "STAT:"-tagged GSTS reply has been seen.  The tag is a
         # fingerprint of the pre-Phase-3 firmware (e077127 era): that build
         # prefixes status rows and has NO continuous-scan protocol (no RUN
         # handler, no binary 'L' frames), so a RUN sent to it is silently
         # ignored.  Current firmware prints the bare CSV.  Undocumented on
-        # the wire — established by probing a flashed board (2026-07-02).
+        # the wire - established by probing a flashed board (2026-07-02).
         self.firmware_tagged_status = False
         if device:
             self.open(device)
@@ -143,7 +204,7 @@ class STM(object):
                         "the public repo)") from exc
                 self.stm_serial = EmulatedSerial(timeout=1)
             elif "://" in device:
-                # pyserial URL handler, e.g. socket://127.0.0.1:9000 — how the
+                # pyserial URL handler, e.g. socket://127.0.0.1:9000 - how the
                 # docker software-mockup emulator is reached from the host
                 # (its compose file exposes TCP 9000 for exactly this).
                 self.stm_serial = serial.serial_for_url(device, timeout=1)
@@ -162,6 +223,8 @@ class STM(object):
             self.stm_serial.reset_input_buffer()
         except Exception:
             pass
+        self._garbage_streak = 0
+        self._powercycle_hinted = False
         logger.info(f"OPEN ok  device={device}")
 
     def get_status(self):
@@ -180,7 +243,7 @@ class STM(object):
                 # e.g. "STAT:0,0,0,0,-19,...". Strip any leading "TAG:" so
                 # we parse just the CSV; plain CSV is left unchanged.  The
                 # STAT tag also fingerprints the old-protocol firmware (see
-                # __init__) — but only LATCH that fingerprint after the line
+                # __init__) - but only LATCH that fingerprint after the line
                 # validates as a genuine full status row.  Latching on any
                 # colon-containing garbage (a mid-frame fragment, an ASCII
                 # log line) permanently and falsely locked out continuous
@@ -201,6 +264,8 @@ class STM(object):
                     self.firmware_tagged_status = True
 
                 self.status = STM_Status.from_list(status_value)
+                self._garbage_streak = 0
+                self._powercycle_hinted = False   # recovered; re-arm the hint
             except Exception as e:
                 # No parseable reply this cycle; keep the last known status
                 # instead of crashing or spamming the console.
@@ -208,6 +273,13 @@ class STM(object):
                 # non-cp1252 char crashed the whole GUI (bench 2026-07-15).
                 print(f"[STM] no response ({e})"
                       .encode("ascii", "replace").decode())
+                self._garbage_streak += 1
+                if self._garbage_streak >= 5 and not self._powercycle_hinted:
+                    self._powercycle_hinted = True
+                    print("[STM] 5 consecutive unparseable replies - the "
+                          "firmware may be stuck streaming binary (e.g. a "
+                          "grid-spectro dump from a crashed session). Have "
+                          "you tried power cycling the microcontroller?")
                 return self.history[-1] if self.history else self.status
         else:
             self.status = STM_Status()
@@ -234,7 +306,7 @@ class STM(object):
             self.stm_serial.write(cmd.encode())
             #logger.info(f"TX  {cmd}")
             # Journal every command at this single choke point (no-op unless a
-            # session is active).  Skip the ~9 Hz GSTS status poll — its reply
+            # session is active).  Skip the ~9 Hz GSTS status poll - its reply
             # is captured as a 'sample' record, so logging the poll too would
             # just double the volume with no added information.
             if not cmd.strip().upper().startswith("GSTS"):
@@ -437,11 +509,11 @@ class STM(object):
                                    y_start, y_end, y_resolution,
                                    sample_number)
         finally:
-            # A parse error must never leave busy latched True — that
+            # A parse error must never leave busy latched True - that
             # silently halts the GSTS poll and every live display (bench
             # 2026-07-15: GUI 'nothing moving' after a corrupted scan).
             self.busy = False
-            # Finalize the verbatim log whatever happened — a crash
+            # Finalize the verbatim log whatever happened - a crash
             # mid-scan still leaves a valid partial record on disk.
             done = scst_logger.stop()
             if done:
@@ -526,13 +598,13 @@ class STM(object):
         Parse one ASCII response line from the firmware.
 
         Returns a dict with at minimum key 'type', which is one of:
-          'A'   — scan ADC row      → {'type':'A', 'row':int, 'data':[int,...]}
-          'Z'   — scan DAC-Z row    → {'type':'Z', 'row':int, 'data':[int,...]}
-          'N'   — noise scan row    → {'type':'N', 'row':int, 'data':[int,...]}
-          'IVD' — IV+dIdV curve     → {'type':'IVD', 'N':int, 'values':[int,...]}
-          'IV'  — raw IV curve      → {'type':'IV',  'values':[int,...]}
-          'DI'  — dI/dZ curve       → {'type':'DI',  'values':[int,...]}
-          'D'   — done sentinel     → {'type':'D'}
+          'A'   - scan ADC row      → {'type':'A', 'row':int, 'data':[int,...]}
+          'Z'   - scan DAC-Z row    → {'type':'Z', 'row':int, 'data':[int,...]}
+          'N'   - noise scan row    → {'type':'N', 'row':int, 'data':[int,...]}
+          'IVD' - IV+dIdV curve     → {'type':'IVD', 'N':int, 'values':[int,...]}
+          'IV'  - raw IV curve      → {'type':'IV',  'values':[int,...]}
+          'DI'  - dI/dZ curve       → {'type':'DI',  'values':[int,...]}
+          'D'   - done sentinel     → {'type':'D'}
           'unknown'                 → {'type':'unknown', 'raw':str}
         Side-effects: updates self.scan_adc / scan_dacz / scan_noise arrays
         when an A/Z/N row is received.
@@ -662,7 +734,7 @@ class STM(object):
 
         # Persist the full data cube + machine-state sidecar so the grid
         # display is reconstructible offline (record-everything posture).
-        # Note: this is a parsed capture, not verbatim — the grid protocol
+        # Note: this is a parsed capture, not verbatim - the grid protocol
         # is binary; a byte-level tee is a future refinement.
         try:
             base = data_paths.day_path(

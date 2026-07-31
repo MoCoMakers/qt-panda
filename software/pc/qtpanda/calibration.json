@@ -8,5 +8,7 @@
   "piezo_z_nm_per_v": 3.0,
   "adc_v_per_lsb": 0.0003125,
   "preamp_a_per_v": 1e-08,
-  "preamp_v_per_a": 100000000.0
+  "preamp_v_per_a": 100000000.0,
+  "control_rate_hz": 100000.0,
+  "line_rate_ceiling_hz": 390.0
 }

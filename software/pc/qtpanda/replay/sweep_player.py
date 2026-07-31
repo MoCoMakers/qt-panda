@@ -1,5 +1,9 @@
 """sweep_player — offline radio-style replay of a day's continuous scans.
 
+Renders the output of the day-wrap-up chain — authoritative runbook:
+TIMELINE_SKILL.md (this folder).  If the timeline looks empty/plain,
+the /timeline skill hasn't run for that day yet.
+
 Fully offline: reads only the day folder (.frames + .sweeps.json indexes +
 session journals).  No hardware, no COM port — built to work days later.
 
@@ -126,9 +130,11 @@ class DayData:
         part = ("" if not s["partial"]
                 else f"  PARTIAL {s['lines']}/{idx['image_height']}")
         sid = f"  s{idx['session']}" if idx.get("session") else ""
-        # Suspected physical scale: the calibrated scan-size (the GUI's
-        # red box) recorded in the run's sidecar at capture time.
-        size_nm = (idx.get("settings") or {}).get("scan_size_nm")
+        # Physical scale: per-sweep (journaled SCSZ, follows mid-scan
+        # zooms — sweep_index stamps it), falling back to the sidecar's
+        # capture-time value for indexes built before 2026-07-31.
+        size_nm = (s.get("scan_size_nm")
+                   or (idx.get("settings") or {}).get("scan_size_nm"))
         if size_nm:
             half = next((e["pixels_per_direction"] for e in idx["epochs"]
                          if e["epoch"] == s["epoch"]), None) or 1
@@ -551,7 +557,9 @@ class Player(QtWidgets.QWidget):
         data = np.nan_to_num(arr, nan=fill)
         ext = os.path.splitext(path)[1].lower()
         settings = idx.get("settings") or {}
-        size_nm = settings.get("scan_size_nm")
+        # per-sweep scale first — the sidecar value is stale after
+        # mid-scan zooms (see label())
+        size_nm = s.get("scan_size_nm") or settings.get("scan_size_nm")
         title = (f"{idx.get('source', '')} sweep#{s['i']} {s['dir']} {chan} "
                  f"{_fmt(s['t_start'])}-{_fmt(s['t_end'])}")
         if ext == ".png":

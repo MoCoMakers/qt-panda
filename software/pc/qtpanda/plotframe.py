@@ -1,4 +1,5 @@
 from PySide6 import QtWidgets, QtCore
+import numpy as np
 import pyqtgraph as pg
 import pyqtgraph.exporters
 from math import log10
@@ -280,6 +281,12 @@ class PlotFrame(QtWidgets.QWidget):
     def add_image(self, image, label = None):
 
         self.plot_item = self.graphics.addPlot()
+        # Square pixels: without this the view stretches the image to the
+        # widget's shape, so a 128x128 square scan rendered ~4:1 wide in
+        # the superscan popup while the live raster (which locks aspect)
+        # stayed square (operator 2026-07-31).  STM frames are square in
+        # BOTH pixels and nm, so 1:1 is always correct here.
+        self.plot_item.setAspectLocked(True)
 
         self.image_item = pg.ImageItem(image)
 
@@ -327,6 +334,52 @@ class PlotFrame(QtWidgets.QWidget):
         self.levelsChanged.emit(low, high)
 
     # --------------------------
+    # Robust vertical range (opt-in)
+    # --------------------------
+
+    def set_robust_y(self, lo_pct=1.0, hi_pct=99.0, ylabel="amp"):
+        """Clip the y-axis to [lo_pct, hi_pct] percentiles of each update
+        instead of pyqtgraph's min→max auto-range.  Rail/saturation
+        excursions otherwise own the scale and flatten the real signal
+        into a solid block (the Continuous Scan 'Current (live)' plot,
+        bench 2026-07-31).  The axis label gains a '(clipped)' suffix
+        whenever samples fall outside the shown range."""
+        self._robust_y = (float(lo_pct), float(hi_pct))
+        self._robust_ylabel = ylabel
+        if self.plot_item is not None:
+            self.plot_item.enableAutoRange(x=True, y=False)
+
+    def _apply_robust_y(self, y_data):
+        rb = getattr(self, "_robust_y", None)
+        if rb is None or self.plot_item is None:
+            return
+        y = np.asarray(y_data, float)
+        y = y[np.isfinite(y)]
+        if y.size < 2:
+            return
+        # IQR outlier fence, not bare percentiles: the bench current
+        # stream rails 5-26% of samples, so a 1-99% window still lands ON
+        # the rail.  The quartile core is immune up to ~25% outliers.
+        q25, q75 = np.percentile(y, (25.0, 75.0))
+        iqr = q75 - q25
+        if iqr > 0:
+            lo = max(float(y.min()), q25 - 3.0 * iqr)
+            hi = min(float(y.max()), q75 + 3.0 * iqr)
+        else:                              # degenerate: fall back to args
+            lo, hi = np.percentile(y, rb)
+        if hi <= lo:                       # flat trace: give it breathing room
+            lo, hi = lo - 1.0, hi + 1.0
+        pad = 0.08 * (hi - lo)
+        self.plot_item.setYRange(lo - pad, hi + pad, padding=0)
+        # Suffix only for MEANINGFUL clipping (>1% of samples), not the
+        # statistical tail every gaussian trace has.
+        frac_out = float(((y < lo) | (y > hi)).mean())
+        lbl = self._robust_ylabel + (" (clipped)" if frac_out > 0.01 else "")
+        if lbl != getattr(self, "_robust_lbl_last", None):
+            self._robust_lbl_last = lbl
+            self.plot_item.setLabel('left', lbl)
+
+    # --------------------------
     # Update Line Plot
     # --------------------------
 
@@ -334,6 +387,7 @@ class PlotFrame(QtWidgets.QWidget):
 
         if self.curve is not None:
             self.curve.setData(x_data, y_data)
+            self._apply_robust_y(y_data)
 
         if self.region is not None:
             self.region_curve.setData(x_data, y_data)

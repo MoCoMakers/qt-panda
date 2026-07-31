@@ -379,7 +379,8 @@ class CopilotBridge:
                         cmd = str(body.get("cmd", "")).strip()
                         if not cmd:
                             raise ValueError("missing 'cmd'")
-                        NO_GUI = ("STRM", "RAWD", "SPPX", "VERS", "SETD")
+                        NO_GUI = ("STRM", "RAWD", "SPPX", "VERS", "SETD",
+                                  "DIAG")   # FW 5.4 ISR self-timing report
                         if not cmd.upper().startswith(NO_GUI):
                             raise PermissionError(
                                 f"{cmd.split()[0]!r} has a GUI control — "

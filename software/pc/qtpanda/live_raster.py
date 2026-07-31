@@ -1,5 +1,6 @@
 import math
 import os
+import time
 import numpy as np
 from datetime import datetime
 from PySide6.QtWidgets import (
@@ -179,6 +180,9 @@ class LiveRaster(QWidget):
         self._z_retrace = np.zeros((self._H, self._half), dtype=np.float32)
         self._e_trace   = np.zeros((self._H, self._half), dtype=np.float32)
         self._e_retrace = np.zeros((self._H, self._half), dtype=np.float32)
+        self._painted   = np.zeros(self._H, dtype=bool)  # rows written this scan
+        self._paint_seq = np.zeros(self._H, dtype=np.int64)  # recency, see autolevel
+        self._paint_counter = 0
 
         # Y-parity tracking (alternating-direction frames; see update_line).
         self._pass_parity = False
@@ -261,6 +265,9 @@ class LiveRaster(QWidget):
         self._rb_lvl_cycle.setToolTip("Auto-level once per completed scan cycle (default)")
         self._rb_lvl_cont.setToolTip("Auto-level on every line — live level tracking")
         self._rb_lvl_off.setToolTip("Never auto-level — use the histogram sliders manually")
+        # Manual mode freezes the histogram's own view range so wheel-zoom
+        # near a level spike survives the ~50 Hz per-line image updates.
+        self._rb_lvl_off.toggled.connect(self._on_lvl_mode_changed)
 
         from PySide6.QtWidgets import QSpinBox, QCheckBox, QComboBox
         self._chk_rowalign = QCheckBox("Row align")
@@ -366,6 +373,17 @@ class LiveRaster(QWidget):
         self._hist_e.sigLevelsChanged.connect(self._mirror_e)
         self._hist_e.sigLookupTableChanged.connect(self._mirror_e)
 
+        # Grabbing a level triangle switches to "No tracking" — otherwise
+        # Auto/cycle re-levels seconds later and yanks the handles back
+        # ("the triangles won't drag", bench 2026-07-31).  pyqtgraph 0.14
+        # has no sigRegionChangeStarted, so distinguish user drags from
+        # the auto-leveler's programmatic setLevels via the region/line
+        # `moving` flags, which are True only during a mouse drag.
+        self._hist_z.region.sigRegionChanged.connect(
+            lambda r: self._user_grabbed_levels(r))
+        self._hist_e.region.sigRegionChanged.connect(
+            lambda r: self._user_grabbed_levels(r))
+
         # Z-trace 1D plot (latest line)
         self._plt_line = glw.addPlot(row=1, col=0, colspan=4)
         self._plt_line.setLabel('bottom', 'X', units='nm')
@@ -414,6 +432,9 @@ class LiveRaster(QWidget):
         self._z_retrace = np.zeros(shape, dtype=np.float32)
         self._e_trace   = np.zeros(shape, dtype=np.float32)
         self._e_retrace = np.zeros(shape, dtype=np.float32)
+        self._painted = np.zeros(shape[0], dtype=bool)  # rows written this scan
+        self._paint_seq = np.zeros(shape[0], dtype=np.int64)
+        self._paint_counter = 0
         self._pass_parity = False
         self._last_raw_row = -1
         self._apply_physical_rects()
@@ -424,6 +445,8 @@ class LiveRaster(QWidget):
         for buf in (self._z_trace, self._z_retrace,
                     self._e_trace, self._e_retrace):
             buf[:] = 0
+        self._painted[:] = False
+        self._paint_seq[:] = 0
         self._push_all_images(auto=False)
 
     @Slot(int, object, object)
@@ -475,15 +498,34 @@ class LiveRaster(QWidget):
         self._z_retrace[row, :] = zr.astype(np.float32)
         self._e_trace[row, :]   = et.astype(np.float32)
         self._e_retrace[row, :] = er.astype(np.float32)
+        self._painted[row] = True
+        self._paint_counter += 1
+        self._paint_seq[row] = self._paint_counter
 
-        self._img_zt.setImage(self._z_disp(self._z_trace), autoLevels=False)
-        self._img_zr.setImage(self._z_retrace, autoLevels=False)
-        self._img_et.setImage(self._e_disp(self._e_trace), autoLevels=False)
-        self._img_er.setImage(self._e_display(self._e_retrace), autoLevels=False)
+        # Row-aligned display is expensive (H degree-5 polyfits per channel
+        # per repaint), so with Row align on, full-image repaints cap at
+        # ~10 Hz.  The buffers above always update — no data is skipped,
+        # the next repaint catches up.
+        now = time.monotonic()
+        if (not self._chk_rowalign.isChecked()
+                or now - getattr(self, "_last_repaint", 0.0) > 0.1):
+            self._last_repaint = now
+            self._img_zt.setImage(self._z_disp(self._z_trace), autoLevels=False)
+            self._img_zr.setImage(self._z_retrace, autoLevels=False)
+            self._img_et.setImage(self._e_disp(self._e_trace), autoLevels=False)
+            self._img_er.setImage(self._e_display(self._e_retrace),
+                                  autoLevels=False)
 
-        # Continuous level tracking: re-level every line when selected.
+        # Continuous level tracking: re-level when selected — but at most
+        # ~2 Hz.  _do_autolevel row-aligns both channels (H polyfits each)
+        # since the displayed-data fix; per-line at scan line rates that
+        # saturated the GUI thread (freeze: Continuous + Row align + CC,
+        # 2026-07-31).
         if self._rb_lvl_cont.isChecked():
-            self._do_autolevel()
+            now = time.monotonic()
+            if now - getattr(self, "_last_autolevel", 0.0) > 0.5:
+                self._last_autolevel = now
+                self._do_autolevel(recent=True)
 
         # 1D Z-trace of the most recent line, x-axis in nm.
         x_nm = np.linspace(0.0, self._scan_size_nm, half)
@@ -553,6 +595,30 @@ class LiveRaster(QWidget):
         self._img_et.setImage(self._e_disp(self._e_trace), autoLevels=auto)
         self._img_er.setImage(self._e_display(self._e_retrace), autoLevels=auto)
 
+    def _user_grabbed_levels(self, region):
+        """A histogram level triangle is being dragged by the mouse: go
+        manual so the auto-leveler stops fighting the user's hands.
+        `moving` is True only during mouse drags — programmatic
+        setLevels (the auto-leveler) never sets it."""
+        dragging = getattr(region, "moving", False) or any(
+            getattr(ln, "moving", False)
+            for ln in getattr(region, "lines", ()))
+        if dragging and not self._rb_lvl_off.isChecked():
+            self._rb_lvl_off.setChecked(True)
+            print("[RASTER] histogram handle grabbed - level tracking off")
+
+    def _on_lvl_mode_changed(self, manual: bool):
+        """No-tracking mode: freeze histogram view ranges so zoom sticks;
+        auto modes: give the ranges back to pyqtgraph."""
+        for hist in (self._hist_z, self._hist_e):
+            try:
+                if manual:
+                    hist.vb.disableAutoRange()
+                else:
+                    hist.vb.enableAutoRange()
+            except Exception:
+                pass  # pyqtgraph internals moved; never break the raster
+
     def _mirror_z(self):
         lo, hi = self._hist_z.getLevels()
         self._img_zr.setLevels((lo, hi))
@@ -585,9 +651,31 @@ class LiveRaster(QWidget):
     # Buttons
     # -------------------------------------------------------------------------
 
-    def _do_autolevel(self):
-        lo_z, hi_z = np.percentile(self._z_trace, [2, 98])
-        lo_e, hi_e = np.percentile(self._e_display(self._e_trace), [2, 98])
+    def _do_autolevel(self, recent=False):
+        # Level on exactly what the images DISPLAY (row-align included).
+        # Leveling the raw buffer while the view showed row-aligned data
+        # put the window tens of thousands of counts off the visible
+        # histogram whenever CC held Z at a big DC value (bench bug,
+        # 2026-07-31).  Also skip rows not yet painted this scan — their
+        # allocation zeros drag the percentiles toward 0.
+        zd = self._z_disp(self._z_trace)
+        ed = self._e_disp(self._e_trace)
+        painted = getattr(self, "_painted", None)
+        # Continuous mode levels on the most RECENT quarter of painted
+        # rows: with CC tracking drift, old rows sit hundreds of counts
+        # away, and a full-frame percentile spans the drift ramp — the
+        # live rows then all clip to one end (solid-yellow Z map, bench
+        # 2026-07-31).
+        if recent and painted is not None and painted.any():
+            seq = self._paint_seq
+            thr = np.percentile(seq[painted], 75)
+            mask = painted & (seq >= thr)
+            if mask.sum() >= 4:
+                painted = mask
+        if painted is not None and painted.any() and not painted.all():
+            zd, ed = zd[painted], ed[painted]
+        lo_z, hi_z = np.percentile(zd, [2, 98])
+        lo_e, hi_e = np.percentile(ed, [2, 98])
         self._hist_z.setLevels(float(lo_z), float(hi_z))
         self._hist_e.setLevels(float(lo_e), float(hi_e))
 

@@ -1,5 +1,10 @@
 """make_bundle — self-contained team share of the offline replay tools.
 
+LAST step of the day-wrap-up chain — authoritative runbook:
+TIMELINE_SKILL.md (this folder).  Order: sweep_index.py → /timeline
+skill → daylog.py --write → scan-notes summary → make_bundle.py.
+Do not bundle before TIMELINE.json exists (this script warns).
+
 Produces exactly the layout Matt proposed (2026-07-26): the python files
 on top, the day folder(s) under a local ``data/``, plus README,
 requirements and a double-click launcher.  A teammate needs Python 3.10+
@@ -141,6 +146,16 @@ def main():
         src = os.path.join(data_paths.DATA_ROOT, day)
         if not os.path.isdir(src):
             raise SystemExit(f"no such day folder: {src}")
+        # A bundle without the narrative timeline replays raw sweeps with
+        # no story — run the /timeline skill (TIMELINE_SKILL.md, this
+        # folder) before bundling.  Warn, don't block: partial shares of
+        # an unfinished day are still legitimate.
+        if not os.path.isfile(os.path.join(src, "TIMELINE.json")):
+            print(f"WARNING: {day} has no TIMELINE.json — the player will "
+                  f"show no narrative ranges.\n"
+                  f"         Run the /timeline skill first "
+                  f"(see TIMELINE_SKILL.md next to this script).",
+                  file=sys.stderr)
         dst = os.path.join(out, "data", day)
         if os.path.isdir(dst):
             shutil.rmtree(dst)

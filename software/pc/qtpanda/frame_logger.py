@@ -127,21 +127,23 @@ class FrameLogger:
         self._f.flush()               # a crash loses at most one frame
         self.n_frames += 1
 
-        # Drop accounting.  The firmware wraps its line counter at the line
-        # count; infer the wrap from the largest line number seen + 1 once a
-        # wrap occurs, and count any forward jump as dropped lines.
-        if self._last_line is not None:
-            if line_number > self._last_line:
-                gap = line_number - self._last_line - 1
-            elif self._wrap:
-                gap = (line_number - self._last_line - 1) % self._wrap
-            else:
-                gap = 0               # first wrap with unknown modulus
+        # Drop accounting.  The firmware wraps its line counter at
+        # pixelsPerLine, which equals this record's pixel count — no
+        # inference needed.  A geometry change (pixel count changes) or a
+        # scan restart (counter reset to 0 from far away) starts a fresh
+        # stream instead of being counted: the old inferred-wrap scheme
+        # booked ~448 phantom drops per sweep after a 512→64 px change
+        # (67,129 "dropped" lines on 2026-07-31 were this artifact).
+        if self._wrap != n:
+            if self._wrap is not None:
+                self._last_line = None    # geometry changed: new stream
+            self._wrap = n
+        if self._last_line is not None and self._wrap:
+            gap = (line_number - self._last_line - 1) % self._wrap
+            if line_number == 0 and gap > self._wrap // 2:
+                gap = 0                   # counter reset (RUN), not drops
             if gap:
                 self.n_dropped += gap
-        if self._wrap is None and self._last_line is not None \
-                and line_number < self._last_line:
-            self._wrap = self._last_line + 1
         self._last_line = line_number
 
 

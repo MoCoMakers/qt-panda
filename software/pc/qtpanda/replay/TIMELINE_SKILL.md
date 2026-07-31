@@ -19,8 +19,23 @@ important events as labeled lines, replacing the raw marker flood.
 
 Arguments: a day name like `2026-Jul-15` (folder under `TeamUpdate/data`).
 
+**When this runs — the end-of-day wrap-up chain.** This skill is a
+mandatory step of the day-wrap-up process, in this order:
+`sweep_index.py` → `/timeline` (this skill) → `daylog.py <day> --write`
+→ scan-notes summary → `make_bundle.py`. A bundle shipped without
+TIMELINE.json replays raw sweeps with no story (make_bundle warns if a
+bundled day lacks it — never ship past that warning without asking Matt).
+
 ## Steps
 
+0. Build the sweep indexes first:
+   `python sweep_index.py <day-folder>` — the draft derives `scanning`
+   regions from `.sweeps.json`; a `.frames` without its index silently
+   drops that scan from the draft (this bit us 2026-07-30; the draft
+   now warns). Indexes built before 2026-07-31 lack the per-sweep
+   `scan_size_nm` (journaled-SCSZ scale) that the level-5 scale-era
+   brackets and the player's nm labels need — re-run sweep_index to
+   upgrade them in place.
 1. From `software/pc/qtpanda/replay/`:
    `python timeline_doc.py <day-folder> --draft` → writes
    `TIMELINE.draft.json` (deterministic regions: sessions, scans,
@@ -65,8 +80,16 @@ Arguments: a day name like `2026-Jul-15` (folder under `TeamUpdate/data`).
      deserves a quality bracket). Default roster for the remaining
      levels — author every one the day's data supports (2026-07-15 is
      the exemplar; "allow 10" means FILL them, not cap them): level 4 =
-     uptime blocks between crashes ("up 67m ✗"); level 5 = scan
-     resolution eras; level 6 = stability-verdict state spans; level 7 =
+     uptime blocks between crashes ("up 67m ✗"); level 5 = **physical
+     scan-scale eras** — one span per scale domain visited, labeled in
+     nm with sweep counts ("30 nm field, 17 sweeps" → "5.9 nm" → "1.0
+     nm" → "0.5 nm", the 2026-07-30 zoom ladder is the exemplar).
+     Scale comes from journaled SCSZ commands, NOT the sidecar's
+     capture-time scan_size_nm (stale after mid-scan zooms);
+     sweep_index ≥2026-07-31 stamps per-sweep `scan_size_nm` — count
+     sweeps per era from it (`collections.Counter`), and rebuild any
+     older index first. Sub-2-min zoom transients get gaps, not spans;
+     level 6 = stability-verdict state spans; level 7 =
      sub-experiments (superscan trials...); level 8 = raw-tap/coverage
      spans (where ground truth exists); level 9 = sample/piezo/setup
      line (hedge explicitly when only inferable from adjacent days).

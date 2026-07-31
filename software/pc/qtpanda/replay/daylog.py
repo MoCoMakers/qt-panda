@@ -1,5 +1,9 @@
 """daylog — deterministic index/query helper over the per-day data folders.
 
+Part of the day-wrap-up chain — authoritative runbook: TIMELINE_SKILL.md
+(this folder).  Order: sweep_index.py → /timeline skill → daylog.py
+--write → scan-notes summary → make_bundle.py.
+
 The narrative layer is LLM-driven (Claude via the copilot bridge or CLI);
 this tool is what the LLM calls so it never has to grope through a
 thousand files by hand.  Works over the folders data_paths.py owns

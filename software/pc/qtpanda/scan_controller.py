@@ -49,6 +49,8 @@ class ScanController(QObject):
         self.setpoint_pa     = 1.0
         self.kp              = 0.0
         self.ki              = 4.577   # Ki_isr = 300000 / 65536
+        self.samples_per_pixel = 0     # SPPX; 0 = firmware auto-derives
+        self.line_repeat     = 1       # LRPT; 1 = single pass (off)
         # Bias is owned by the left-panel control (spnBias); not duplicated here.
 
     # -------------------------------------------------------------------------
@@ -74,10 +76,22 @@ class ScanController(QObject):
                          * self._POSITION_PER_DAC_LSB))
 
     def _pa_to_setpoint_lsb(self, pa: float) -> int:
-        """Convert a tunnel-current setpoint in pA to ADC LSB magnitude."""
+        """Convert a tunnel-current setpoint in pA to ADC LSB magnitude.
+
+        Scales with the operator's preamp-gain setting (the 1X/5X combo):
+        at NX gain the same current yields N× the ADC counts.  Without
+        this, "1000 pA" at 5X regulated at ~200 pA real (2026-07-31)."""
         amps = pa * 1e-12
-        volts = amps * self._cal.preamp_v_per_a
+        volts = (amps * self._cal.preamp_v_per_a
+                 * float(stm_control.STM_Status.preamp_gain))
         return abs(int(round(volts / self._cal.adc_v_per_lsb)))
+
+    def _setpoint_lsb_to_pa(self, counts: int) -> float:
+        """Inverse of _pa_to_setpoint_lsb (same gain scaling)."""
+        volts = abs(int(counts)) * self._cal.adc_v_per_lsb
+        amps = volts / (self._cal.preamp_v_per_a
+                        * float(stm_control.STM_Status.preamp_gain))
+        return amps * 1e12
 
     # -------------------------------------------------------------------------
     # Internal helpers
@@ -85,6 +99,17 @@ class ScanController(QObject):
 
     def _send(self, cmd: str):
         self._stm.send_cmd(cmd)
+
+    def shutdown(self):
+        """Stop and join the reader thread (app close).  The reader stays
+        alive after HALT by design (it carries the recording stream), so
+        without this it is destroyed while still running and Qt aborts
+        the process — the recurring exit-code-9 "crash on close"
+        (diagnosed 2026-07-31)."""
+        r, self._reader = self._reader, None
+        if r is not None and r.isRunning():
+            r.stop()
+            r.wait(2000)
 
     def _ensure_reader(self) -> bool:
         """Start the reader thread if needed.  Returns True on success."""
@@ -204,6 +229,15 @@ class ScanController(QObject):
         """SPPX override (FW 5.2): 0 = auto-derive, >0 = pin spp."""
         self.samples_per_pixel = int(n)
         self._send(f'SPPX {int(n)}')
+
+    @Slot(int)
+    def set_line_repeat(self, n: int):
+        """LRPT (FW 5.3): scan each row n times, firmware averages the
+        passes and emits ONE line — rejects noise slower than a line
+        (the 10–300 Hz streak band per-pixel averaging can't reach).
+        1 = off.  Sweep time scales by n.  Silently ignored by FW ≤ 5.2."""
+        self.line_repeat = int(max(1, n))
+        self._send(f'LRPT {self.line_repeat}')
 
     @Slot(float)
     def set_setpoint(self, pa: float):

@@ -225,12 +225,23 @@ void serialCommand(String command, STM &stm)
     // ---- ISR period (SETD <microseconds>) ------------------------------------
     else if (command == "SETD") {
         int us = Serial.parseInt();
-        if (us < 10) us = 10;
+        // Floor 5 µs (200 kHz): ISR measured at 2-5 µs worst case
+        // (DIAG, 2026-07-31); ADC silicon caps at 250 ksps = 4 µs.
+        if (us < 5) us = 5;
         if (us > 1000) us = 1000;
         stm.stopControlLoop();
         stm.control_dt_us = us;
+        stm.isrOverruns  = 0;   // new budget -> fresh self-timing stats
+        stm.isrMaxMicros = 0;
         stm.startControlLoop(controlISR);
         stm.updateStepSizes();
+    }
+    // ---- FW 5.4: ISR self-timing report (DIAG) --------------------------------
+    else if (command == "DIAG") {
+        Serial.print("DIAG dt_us=");       Serial.print(stm.control_dt_us);
+        Serial.print(" isr_max_us=");      Serial.print(stm.isrMaxMicros);
+        Serial.print(" isr_overruns=");    Serial.print(stm.isrOverruns);
+        Serial.print(" dropped_lines=");   Serial.println(stm.droppedLineFrames);
     }
     // ---- Phase 5: push-mode status streaming ----------------------------------
     else if (command == "STRM") {
@@ -248,9 +259,20 @@ void serialCommand(String command, STM &stm)
         stm.sppOverride = (v < 0) ? 0 : (unsigned int)v;
         stm.updateStepSizes();
     }
+    // ---- FW 5.3: line re-scan (LRPT <n>; average n passes per row, emit 1) ----
+    else if (command == "LRPT") {
+        int v = Serial.parseInt();
+        if (v < 1)  v = 1;
+        if (v > 64) v = 64;
+        noInterrupts();
+        stm.lineRepeat      = (unsigned int)v;
+        stm.linePassCounter = 0;
+        interrupts();
+        stm.updateStepSizes();
+    }
     // ---- Version / capability probe --------------------------------------------
     else if (command == "VERS") {
-        Serial.println("QTPANDA-FW 5.2 CAPS:RUN,STRM,RAWD,SPPX");
+        Serial.println("QTPANDA-FW 5.6 CAPS:RUN,STRM,RAWD,SPPX,LRPT,DIAG,GABT");
     }
     // ---- Phase 4: lock-in dI/dV ----------------------------------------------
     else if (command == "LIDV") {

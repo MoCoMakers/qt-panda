@@ -1,5 +1,9 @@
 """sweep_index — derived per-sweep index over logged continuous-scan frames.
 
+FIRST step of the day-wrap-up chain — authoritative runbook:
+TIMELINE_SKILL.md (this folder).  Order: sweep_index.py → /timeline
+skill → daylog.py --write → scan-notes summary → make_bundle.py.
+
 The .frames files already hold everything needed for sweep-level replay:
 every line carries its own pc_time, and the Y triangle folds one
 line-counter cycle (0..2H-1) into an up sweep then a mirrored down sweep
@@ -46,12 +50,57 @@ def load_frames(frames_path):
     return list(frame_logger.read_frames(frames_path))
 
 
+def _scsz_timeline(frames_path, sidecar):
+    """Journaled scan-size changes [(t, nm), ...] covering this run.
+
+    The sidecar's scan_size_nm is captured once at RUN; mid-scan zooms
+    only exist as journaled SCSZ commands (20-bit firmware units).
+    Convert with the sidecar's own calibration: X-DAC volts per 16-bit
+    LSB × piezo nm/V ÷ 16 (20-bit position → 16-bit DAC)."""
+    cal = (sidecar.get("settings") or {}).get("calibration") or {}
+    v_lsb, nm_v = cal.get("dac_x_v_per_lsb"), cal.get("piezo_x_nm_per_v")
+    if not (v_lsb and nm_v):
+        return []
+    sid = _session_of(frames_path)
+    jpath = (os.path.join(os.path.dirname(os.path.abspath(frames_path)),
+                          f"session_{sid}.jsonl") if sid else None)
+    if not (jpath and os.path.isfile(jpath)):   # bundle moved: try sidecar's
+        jpath = (sidecar.get("settings") or {}).get("journal")
+    if not (jpath and os.path.isfile(jpath)):
+        return []
+    out = []
+    with open(jpath, errors="replace") as f:
+        for ln in f:
+            try:
+                rec = json.loads(ln)
+            except ValueError:
+                continue
+            if rec.get("type") != "command":
+                continue
+            cmd = str(rec.get("data", {}).get("cmd", ""))
+            if cmd.startswith("SCSZ "):
+                try:
+                    units = float(cmd.split()[1])
+                except (IndexError, ValueError):
+                    continue
+                out.append((rec.get("t", 0.0),
+                            round(units * v_lsb * nm_v / 16.0, 4)))
+    return out
+
+
 def build_index(frames_path, image_height=None, records=None):
     """Segment a .frames file into sweeps.  Returns the index dict."""
     sidecar = frame_logger.read_sidecar(frames_path) or {}
     settings = sidecar.get("settings", {})
-    H = int(image_height or settings.get("image_height") or DEFAULT_HEIGHT)
     records = load_frames(frames_path) if records is None else records
+    # Derive H from the DATA when not told: the sidecar has no
+    # "image_height" key, so the old DEFAULT_HEIGHT fallback folded every
+    # non-512-px recording at the wrong period — daylog, sweep_player and
+    # the timeline draft then saw 0 full sweeps in a 128-px file that
+    # really holds 168 (audit 2026-07-31).
+    H = int(image_height or settings.get("image_height")
+            or (int(settings.get("pixels_per_line", 0)) // 2)
+            or (len(records[0][2]) // 2 if records else DEFAULT_HEIGHT))
 
     epochs, sweeps = [], []
     cur = None            # active sweep accumulator
@@ -92,6 +141,19 @@ def build_index(frames_path, image_height=None, records=None):
         prev_raw = raw
     close("end_of_file")
     epochs.append({"epoch": epoch_id, "pixels_per_direction": half})
+
+    # per-sweep physical scale: last journaled SCSZ at or before each
+    # sweep's start (mid-scan zooms make the sidecar's single value stale)
+    scsz = _scsz_timeline(frames_path, sidecar)
+    for s in sweeps:
+        nm = None
+        for t, v in scsz:
+            if t <= s["t_start"]:
+                nm = v
+            else:
+                break
+        if nm is not None:
+            s["scan_size_nm"] = nm
 
     return {
         "source": os.path.basename(frames_path),

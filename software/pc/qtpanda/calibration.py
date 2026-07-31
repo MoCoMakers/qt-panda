@@ -41,6 +41,8 @@ FIELDS = (
     "adc_v_per_lsb",
     "preamp_a_per_v",
     "preamp_v_per_a",
+    "control_rate_hz",
+    "line_rate_ceiling_hz",
 )
 
 _DEFAULTS = {
@@ -53,7 +55,16 @@ _DEFAULTS = {
     "piezo_z_nm_per_v":       3.0,
     "adc_v_per_lsb":         20.48 / 65536,   # ±10.24 V / 2^16
     "preamp_a_per_v":         1.0 / 100e6,    # 1/R_fb = 1 / 100 MΩ
-    "preamp_v_per_a":       100e6             # R_fb = 100 MΩ
+    "preamp_v_per_a":       100e6,            # R_fb = 100 MΩ
+    # Device timing (2026-07-31): ISR/control-loop rate (1/control_dt_us)
+    # and the operator-set line-rate ceiling.  Effective line-rate max =
+    # min(line_rate_ceiling_hz, control_rate_hz / pixels_per_line).
+    # 100 kHz bench-validated 2026-07-31: DIAG measured the ISR at
+    # 4-5 µs worst case, zero overruns at SETD 10.  The GUI sends the
+    # matching SETD at every port-open (SETD is volatile across reboot).
+    "control_rate_hz":      100000.0,
+    "line_rate_ceiling_hz":    390.0,   # image-validated cap (raise after
+                                        # mechanical checks at 780+)
 }
 
 
