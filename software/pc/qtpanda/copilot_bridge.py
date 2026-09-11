@@ -46,6 +46,7 @@ Endpoints (all JSON):
   POST /note              {"text": "..."}            journal note, src='agent'
   POST /gate              {"enabled": false}         enable/disable actuation
 """
+import glob
 import json
 import logging
 import os
@@ -56,6 +57,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from PySide6 import QtCore
 
+import data_paths
 import session_journal
 import stm_control
 
@@ -156,9 +158,9 @@ class CopilotBridge:
         } for h in hist]
 
     def screenshot(self, path=None):
-        os.makedirs("logs", exist_ok=True)
-        path = path or os.path.join(
-            "logs", f"copilot_screen_{int(time.time() * 1000)}.png")
+        path = path or data_paths.day_path(
+            f"copilot_screen_{int(time.time() * 1000)}"
+            f"{session_journal.tag()}.png")
         ok = self.widget.grab().save(path)
         return {"ok": bool(ok), "path": os.path.abspath(path)}
 
@@ -166,12 +168,15 @@ class CopilotBridge:
         path = session_journal.active_path()
         if not path:
             # No live session: fall back to the newest journal on disk so
-            # the agent can still read the last session's record.
+            # the agent can still read the last session's record.  Journals
+            # live in per-day folders under DATA_ROOT (epoch-ms filenames,
+            # so a plain sort is chronological).
             try:
                 files = sorted(
-                    f for f in os.listdir("logs")
-                    if f.startswith("session_") and f.endswith(".jsonl"))
-                path = os.path.join("logs", files[-1]) if files else None
+                    glob.glob(os.path.join(data_paths.DATA_ROOT, "*",
+                                           "session_*.jsonl")),
+                    key=os.path.basename)
+                path = files[-1] if files else None
             except OSError:
                 path = None
         if not path:
@@ -374,7 +379,8 @@ class CopilotBridge:
                         cmd = str(body.get("cmd", "")).strip()
                         if not cmd:
                             raise ValueError("missing 'cmd'")
-                        NO_GUI = ("STRM", "RAWD", "SPPX", "VERS", "SETD")
+                        NO_GUI = ("STRM", "RAWD", "SPPX", "VERS", "SETD",
+                                  "DIAG")   # FW 5.4 ISR self-timing report
                         if not cmd.upper().startswith(NO_GUI):
                             raise PermissionError(
                                 f"{cmd.split()[0]!r} has a GUI control — "
@@ -499,8 +505,18 @@ class CopilotBridge:
                         # editable field types only.
                         from PySide6 import QtWidgets as QW
                         name = str(body.get("field", ""))
-                        obj = getattr(w.ui, name, None) or getattr(w, name,
-                                                                   None)
+                        # Dotted paths reach widgets nested on sub-widgets,
+                        # e.g. "_cs_raster._btn_snaps".
+                        obj = None
+                        for root in (w.ui, w):
+                            cur = root
+                            for part in name.split("."):
+                                cur = getattr(cur, part, None)
+                                if cur is None:
+                                    break
+                            if cur is not None:
+                                obj = cur
+                                break
                         if obj is None:
                             raise LookupError(f"no UI field {name!r}")
                         val = body.get("value")

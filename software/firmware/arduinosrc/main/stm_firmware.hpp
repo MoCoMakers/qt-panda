@@ -155,6 +155,18 @@ public:
     volatile int   yCount = -SCAN_COUNTER_LIMIT;
     volatile int   dx = 0, dy = 0;
 
+    // Exact rational stepping (FW 5.6).  The per-tick advance is
+    // num/den, carried as an integer base plus a Bresenham remainder, so
+    // the triangle periods are exact for ANY pixelsPerLine — not only
+    // counts that happen to divide 2^32.  Truncated steps made 1280 px
+    // slip +0.21 lines per Y cycle (image tearing) and cost the operator
+    // a power-of-two-only restriction (2026-07-31).
+    volatile int32_t xStep = 0, yStep = 0;    // |base step| per tick
+    volatile int64_t xRem = 0, yRem = 0;      // remainder numerators
+    volatile int64_t xDen = 1, yDen = 1;      // remainder denominators
+    volatile int64_t xAcc = 0, yAcc = 0;      // Bresenham accumulators
+    volatile int    xDir = 1, yDir = 1;       // +1 / -1 travel direction
+
     // ---- ISR 20-bit virtual positions (sigma-delta input) ------------------
     volatile int   x_pos = 0, y_pos = 0, z_pos = 0;
 
@@ -168,6 +180,20 @@ public:
     volatile unsigned int pixelsPerLine = 512;   // = imagePixels * 2
     volatile unsigned int samplesPerPixel = 24;
     volatile int32_t      zAvg = 0, eAvg = 0;
+
+    // ---- Line-rescan (LRPT, FW 5.3) ----------------------------------------
+    // Repeat each scan row N times, averaging in-firmware, and emit ONE
+    // 'L' frame per row — wire protocol and every PC decoder unchanged.
+    // updateStepSizes() slows Y by N so all N passes cover the same
+    // one-row-pitch band a single pass would (the raster is sheared: Y
+    // advances continuously, one row pitch per emitted line).  Exists to
+    // attack the 10–300 Hz streak band that per-pixel averaging (~200 µs
+    // window) cannot reach (bench 2026-07-30).
+    volatile unsigned int lineRepeat        = 1;  // N passes; 1 = legacy path
+    volatile unsigned int linePassCounter   = 0;  // 0..lineRepeat-1
+    volatile uint32_t     droppedLineFrames = 0;  // audit: line ready, prior unsent
+    int32_t lineAccZ[MAX_PIXELS_PER_LINE];
+    int32_t lineAccE[MAX_PIXELS_PER_LINE];
 
     // ---- ISR mode flags ---------------------------------------------------
     volatile bool scanningEnabled = false;
@@ -186,7 +212,9 @@ public:
     // touches Serial and never blocks.  If loop() falls behind (USB stall),
     // incoming samples are DROPPED AND COUNTED, never silently overwritten.
     static const unsigned int RAW_BLOCK_SAMPLES = 512;
-    static const unsigned int RAW_N_BLOCKS      = 4;
+    // 16 blocks = 82 ms of slack at 100 kHz (4 gave only 20 ms and lost
+    // 0.1% of samples, measured 2026-07-31); 82 KB RAM, plenty free.
+    static const unsigned int RAW_N_BLOCKS      = 16;
     struct RawBlock {
         volatile bool ready = false;
         uint16_t count = 0;
@@ -221,22 +249,56 @@ public:
     // ISR — called every control_dt_us by IntervalTimer
     // =========================================================================
 
+    // ---- ISR self-timing (FW 5.4) ------------------------------------------
+    // Measures actual controlTick() execution time so a faster SETD can be
+    // validated empirically instead of hoped: isrMaxMicros = worst tick,
+    // isrOverruns = ticks that exceeded control_dt_us (budget blown).
+    // Read via the DIAG command; SETD resets both.
+    volatile uint32_t isrOverruns   = 0;
+    volatile uint32_t isrMaxMicros  = 0;
+
     void controlTick() {
         if (blockISRControl) return;
+        uint32_t _isr_t0 = micros();
 
         // 1. Increment scan counters -----------------------------------------
         if (scanningEnabled) {
-            if (xCount <= -SCAN_COUNTER_LIMIT || xCount >= SCAN_COUNTER_LIMIT - 1 - dx)
-                dx = -dx;
-            xCount += dx;
+            // X: exact rational advance, then reflect at the limits.
+            int32_t sx = xStep;
+            xAcc += xRem;
+            if (xAcc >= xDen) { xAcc -= xDen; sx++; }
+            xCount += xDir * sx;
+            // Reflect via the (small) overshoot: "2*LIMIT - xCount" would
+            // overflow int, since 2*2^30 > INT_MAX (caught at compile).
+            if (xCount >= SCAN_COUNTER_LIMIT) {
+                xCount = SCAN_COUNTER_LIMIT - (xCount - SCAN_COUNTER_LIMIT);
+                xDir = -1;
+            } else if (xCount <= -SCAN_COUNTER_LIMIT) {
+                xCount = -SCAN_COUNTER_LIMIT + (-SCAN_COUNTER_LIMIT - xCount);
+                xDir = 1;
+            }
             x_pos = (int)(((int64_t)xCount * (int64_t)scanSize) >> 31) + xo;
 
-            if (yCount <= -SCAN_COUNTER_LIMIT || yCount >= SCAN_COUNTER_LIMIT - 1 - dy)
-                dy = -dy;
-            yCount += dy;
+            // Y: same, one pixelsPerLine*lineRepeat slower.
+            int32_t sy = yStep;
+            yAcc += yRem;
+            if (yAcc >= yDen) { yAcc -= yDen; sy++; }
+            yCount += yDir * sy;
+            bool yBottom = false;
+            if (yCount >= SCAN_COUNTER_LIMIT) {
+                yCount = SCAN_COUNTER_LIMIT - (yCount - SCAN_COUNTER_LIMIT);
+                yDir = -1;
+            } else if (yCount <= -SCAN_COUNTER_LIMIT) {
+                yCount = -SCAN_COUNTER_LIMIT + (-SCAN_COUNTER_LIMIT - yCount);
+                yDir = 1;
+                yBottom = true;
+            }
             y_pos = (int)(((int64_t)yCount * (int64_t)scanSize) >> 31) + yo;
 
-            if (yCount <= -SCAN_COUNTER_LIMIT) lineCounter = 0; // resync guard
+            if (yBottom) {                         // resync guard
+                lineCounter = 0;
+                linePassCounter = 0;
+            }
         }
 
         // 2. Read ADC ---------------------------------------------------------
@@ -311,8 +373,29 @@ public:
                 int32_t zMean = zAvg / (int)samplesPerPixel;
                 int32_t eMean = eAvg / (int)samplesPerPixel;
 
-                uint8_t *buf = fillData1 ? data1 : data2;
-                writePixel(buf, pixelCounter, pixelsPerLine, zMean, eMean);
+                // Line-rescan (LRPT): accumulate this row across lineRepeat
+                // passes.  Constant per-tick cost — the averaged pixel is
+                // written during the FINAL pass, never as a burst at line
+                // end.  Overflow-safe: |zMean| ≤ 2^19, N ≤ 64 → ≤ 2^25.
+                bool finalPass = true;
+                if (lineRepeat > 1) {
+                    if (linePassCounter == 0) {
+                        lineAccZ[pixelCounter] = zMean;
+                        lineAccE[pixelCounter] = eMean;
+                    } else {
+                        lineAccZ[pixelCounter] += zMean;
+                        lineAccE[pixelCounter] += eMean;
+                    }
+                    finalPass = (linePassCounter >= lineRepeat - 1);
+                    if (finalPass) {
+                        zMean = lineAccZ[pixelCounter] / (int)lineRepeat;
+                        eMean = lineAccE[pixelCounter] / (int)lineRepeat;
+                    }
+                }
+                if (finalPass) {
+                    uint8_t *buf = fillData1 ? data1 : data2;
+                    writePixel(buf, pixelCounter, pixelsPerLine, zMean, eMean);
+                }
 
                 pixelCounter++;
                 sampleCounter = 0;
@@ -320,16 +403,24 @@ public:
                 eAvg = 0;
 
                 if (pixelCounter >= pixelsPerLine) {
-                    // Stamp line number into buffer header
-                    buf[0] = (uint8_t)((lineCounter >> 8) & 0xFF);
-                    buf[1] = (uint8_t)( lineCounter        & 0xFF);
+                    pixelCounter = 0;
+                    if (!finalPass) {
+                        linePassCounter++;      // same row again, next pass
+                    } else {
+                        linePassCounter = 0;
+                        // Stamp line number into buffer header
+                        uint8_t *buf = fillData1 ? data1 : data2;
+                        buf[0] = (uint8_t)((lineCounter >> 8) & 0xFF);
+                        buf[1] = (uint8_t)( lineCounter        & 0xFF);
 
-                    pixelCounter    = 0;
-                    fillData1       = !fillData1;
-                    pendingLineNumber = lineCounter;
-                    sendData        = true;
-                    lineCounter++;
-                    if (lineCounter >= pixelsPerLine) lineCounter = 0;
+                        if (sendData) droppedLineFrames++;  // loop() lagged;
+                                                            // prior frame lost
+                        fillData1       = !fillData1;
+                        pendingLineNumber = lineCounter;
+                        sendData        = true;
+                        lineCounter++;
+                        if (lineCounter >= pixelsPerLine) lineCounter = 0;
+                    }
                 }
             }
         }
@@ -368,6 +459,11 @@ public:
         }
 
         stm_status.time_millis = millis();
+
+        // ISR self-timing (FW 5.4): worst-case duration + overrun count.
+        uint32_t _isr_el = micros() - _isr_t0;
+        if (_isr_el > isrMaxMicros) isrMaxMicros = _isr_el;
+        if (_isr_el > (uint32_t)control_dt_us) isrOverruns++;
     }
 
     // =========================================================================
@@ -410,18 +506,30 @@ public:
         if (new_spp > 4000) new_spp = 4000;
         unsigned int denom = new_spp * (unsigned int)pixelsPerLine;
         if (denom == 0) denom = 1;
-        int new_dx = (SCAN_COUNTER_LIMIT - 1) / (int)denom * 4;
-        int new_dy = new_dx / (int)pixelsPerLine;
-        if (new_dx < 1) new_dx = 1;
-        if (new_dy < 1) new_dy = 1;
+        // Exact rational steps (FW 5.6).  The X triangle must advance
+        // 2*LIMIT per (denom/2) ticks and Y the same per
+        // (denom/2 * pixelsPerLine * lineRepeat) ticks.  Carrying the
+        // division remainder makes both exact for ANY pixelsPerLine
+        // instead of only counts that divide 2^32 — truncation is what
+        // tore 1280-px images and forced the power-of-two restriction.
+        const int64_t NUM = (int64_t)SCAN_COUNTER_LIMIT * 4;
+        int64_t xden = (int64_t)denom;
+        int64_t yden = xden * (int64_t)pixelsPerLine * (int64_t)lineRepeat;
+        if (yden <= 0) yden = 1;
 
         noInterrupts();
         samplesPerPixel = new_spp;
-        // Strict > 0 matches Dan's reference: when dx is 0 (post-reset), we
-        // pick the negative branch so the very-first ISR tick (xCount = -LIMIT)
-        // reverses dx to positive and the scan ramps up correctly.
-        dx = (dx > 0) ?  new_dx : -new_dx;
-        dy = (dy > 0) ?  new_dy : -new_dy;
+        xStep = (int32_t)(NUM / xden);
+        xRem  = NUM % xden;
+        xDen  = xden;
+        yStep = (int32_t)(NUM / yden);
+        yRem  = NUM % yden;
+        yDen  = yden;
+        xAcc  = 0;
+        yAcc  = 0;
+        // Legacy mirrors so status/debug readers still see a step size.
+        dx = xStep;
+        dy = yStep;
         interrupts();
     }
 
@@ -429,11 +537,17 @@ public:
         noInterrupts();
         xCount       = -SCAN_COUNTER_LIMIT;
         yCount       = -SCAN_COUNTER_LIMIT;
-        dx            = 0;          // Must be 0 before updateStepSizes (see above)
+        dx            = 0;
         dy            = 0;
+        xDir          = 1;          // both axes start climbing from -LIMIT
+        yDir          = 1;
+        xAcc          = 0;
+        yAcc          = 0;
         sampleCounter = 0;
         pixelCounter  = 0;
         lineCounter   = 0;
+        linePassCounter = 0;
+        droppedLineFrames = 0;
         zAvg          = 0;
         eAvg          = 0;
         sigmaX        = 0;
@@ -1039,6 +1153,16 @@ public:
         for (int y = 0; y < y_res; y++) {
             set_dac_y(y_start + y * y_step);
             delayMicroseconds(piezo_y_settle_uS);
+            // FW 5.5: ANY incoming serial byte aborts the grid dump.  A
+            // GUI crash mid-receive used to leave the firmware streaming
+            // binary until power cycle (2026-07-30) — now the reconnecting
+            // host's first command ends it (byte is consumed here; the
+            // command itself is sacrificed to the abort).
+            if (Serial.available()) {
+                while (Serial.available()) Serial.read();
+                Serial.println("GSPC ABORTED (serial byte received)");
+                break;
+            }
             for (int x = 0; x < x_res; x++) {
                 set_dac_x(x_start + x * x_step);
                 delayMicroseconds(piezo_x_settle_uS);

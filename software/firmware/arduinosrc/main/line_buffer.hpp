@@ -5,7 +5,7 @@
 
 // Maximum image pixels per line (per direction). Each pixel costs 8 bytes
 // (4 bytes Z + 4 bytes error), plus 2 bytes for the line-number header.
-#define MAX_PIXELS_PER_LINE 2048
+#define MAX_PIXELS_PER_LINE 2048  // per direction; see stm_firmware.hpp
 #define LINE_BUFFER_SIZE (2 + 8 * MAX_PIXELS_PER_LINE)  // 16386 bytes
 
 // Ping-pong buffer pair — ISR fills one while loop() emits the other.

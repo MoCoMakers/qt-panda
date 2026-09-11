@@ -55,6 +55,7 @@ import live_raster
 import stab_runner
 import session_journal
 import frame_logger
+import data_paths
 import raw_logger
 import status_logger
 import drift_hold
@@ -62,9 +63,101 @@ import dac_restore
 import superscan
 from collections import deque
 
-os.makedirs("./images", exist_ok=True)
 print("Profile:",
       QtGui.QSurfaceFormat.defaultFormat().profile())
+
+
+def _precision_step(mods):
+    """Modifier -> LSB per wheel notch (shared by slider + scrollbars)."""
+    shift = bool(mods & Qt.ShiftModifier)
+    ctrl = bool(mods & Qt.ControlModifier)
+    if shift and ctrl:
+        return 1000     # big jumps
+    if ctrl:
+        return 100
+    if shift:
+        return 1        # ultra fine
+    return 10
+
+
+class PrecisionSlider(QSlider):
+    """QSlider with operator-grade precision control.
+
+    Wheel: Shift = 1 LSB/notch, plain = 10, Ctrl = 100, Ctrl+Shift = 1000.
+    On an inverted-appearance slider the wheel is remapped so wheel-UP
+    always moves the handle UP (= Away/safe on the Z gauge) — stock Qt
+    moved the tip TOWARD the sample on wheel-up.
+
+    Drag: plain drag is the normal absolute slider drag (fast, coarse).
+    Shift+drag switches to a geared RELATIVE drag — 1 LSB per pixel of
+    mouse travel (Ctrl+Shift+drag: 5 LSB/px) — for dialing in the last
+    few tens of LSB without the handle jumping to the click point.
+    """
+
+    def __init__(self, *a, **k):
+        super().__init__(*a, **k)
+        self._prec_y = None
+        self._prec_val = 0
+
+    def wheelEvent(self, ev):
+        notches = ev.angleDelta().y() / 120.0
+        if not notches:
+            ev.ignore()
+            return
+        step = _precision_step(ev.modifiers())
+        delta = int(round(notches * step)) or (1 if notches > 0 else -1)
+        if self.invertedAppearance():
+            delta = -delta      # wheel-up must move the handle up
+        self.setValue(self.value() + delta)
+        ev.accept()
+
+    def mousePressEvent(self, ev):
+        if (ev.button() == Qt.LeftButton
+                and ev.modifiers() & Qt.ShiftModifier):
+            self._prec_y = ev.position().y()
+            self._prec_val = self.value()
+            self.setSliderDown(True)    # blocks stream echo during drag
+            ev.accept()
+            return
+        super().mousePressEvent(ev)
+
+    def mouseMoveEvent(self, ev):
+        if self._prec_y is not None:
+            gear = 5 if ev.modifiers() & Qt.ControlModifier else 1
+            dy = ev.position().y() - self._prec_y
+            delta = int(dy * gear) if self.invertedAppearance() \
+                else int(-dy * gear)
+            self.setValue(self._prec_val + delta)
+            ev.accept()
+            return
+        super().mouseMoveEvent(ev)
+
+    def mouseReleaseEvent(self, ev):
+        if self._prec_y is not None:
+            self._prec_y = None
+            self.setSliderDown(False)
+            ev.accept()
+            return
+        super().mouseReleaseEvent(ev)
+
+
+class PrecisionWheelFilter(QtCore.QObject):
+    """Event filter giving any QAbstractSlider (e.g. the Configuration-tab
+    DACZ/Bias drag bars) the same modifier-scaled wheel steps."""
+
+    def eventFilter(self, obj, ev):
+        if ev.type() == QtCore.QEvent.Wheel:
+            notches = ev.angleDelta().y() / 120.0
+            if notches:
+                step = _precision_step(ev.modifiers())
+                delta = int(round(notches * step)) \
+                    or (1 if notches > 0 else -1)
+                if getattr(obj, "invertedAppearance", lambda: False)():
+                    delta = -delta
+                obj.setValue(obj.value() + delta)
+            return True
+        return False
+
 
 class Widget(QWidget):
 
@@ -74,6 +167,11 @@ class Widget(QWidget):
         self.ui = Ui_Widget()
         self.ui.setupUi(self)
         self.setWindowTitle("Moco Makers Lab STM")
+        # Modifier-scaled wheel steps on the Configuration-tab drag bars
+        # (Shift=1 LSB, plain=10, Ctrl=100, Ctrl+Shift=1000).
+        self._prec_wheel = PrecisionWheelFilter(self)
+        for _bar in (self.ui.scr_DACZ, self.ui.scr_Bias):
+            _bar.installEventFilter(self._prec_wheel)
         # ----------------------
         # STM Interface
         # ----------------------
@@ -207,6 +305,15 @@ class Widget(QWidget):
         self._build_continuous_scan_tab()
         self._build_calibration_tab()
 
+        # The layouts' COMPUTED minimum width exceeds a 1920-px screen, so
+        # every runtime label change (the CC "Z owned by feedback" banner,
+        # status texts...) made Qt re-assert an unsatisfiable minimum and
+        # Windows kicked the window out of Maximized (operator: "every CC
+        # toggle resizes and I lose maximize", 2026-07-31).  An explicit
+        # top-level minimum overrides the layout-derived one — content
+        # squeezes; the window stays put.
+        self.setMinimumSize(1100, 650)
+
         # Main-tab layout: restructure the 2x2 grid into two columns so the
         # scan image (right, tall) and the live current scroll (top-left)
         # get real vertical height instead of a cramped half-row each
@@ -238,6 +345,20 @@ class Widget(QWidget):
         self._btn_main_save.clicked.connect(self._cs_raster._do_save)
         self.ui.horizontalLayout_12.insertWidget(0, self._btn_main_autolevel)
         self.ui.horizontalLayout_12.insertWidget(1, self._btn_main_save)
+        # Always-visible recording posture: ● = writing to disk, ○ = not.
+        # REC = 200 Hz status CSV, RAW = 25 kHz ISR tap.  Updated by the
+        # 2 s re-arm watchdog; tooltip carries the live file paths.
+        self._rec_state_lbl = QLabel("REC ○  RAW ○")
+        self.ui.horizontalLayout_12.insertWidget(2, self._rec_state_lbl)
+        # One-click review of everything recorded since midnight (all
+        # sessions of the day), in the offline sweep player.
+        self._btn_review = QPushButton("Review Day", self.ui.wgtAutoLevels)
+        self._btn_review.setToolTip(
+            "Open the sweep player on today's data folder — every session "
+            "since midnight.  Runs as its own process (file-based, no "
+            "hardware access), safe alongside the live GUI.")
+        self._btn_review.clicked.connect(self._launch_day_review)
+        self.ui.horizontalLayout_12.insertWidget(3, self._btn_review)
 
         # Preamp gain selector (operator-set; NOT a code magic number).
         # At NX gain the same current gives N× the ADC counts, so the
@@ -258,6 +379,16 @@ class Widget(QWidget):
         # ui_form values here rather than regenerating the .ui.
         self.ui.spnMot.setValue(5)          # motor Retract/Approach amount
         self.ui.spnMot.setSingleStep(5)     # arrows step by 5, not 1
+
+        # The legacy left-panel PID row (Set PID / Kp / Ki / Kd) has NO
+        # handler — the button never did anything, and its stale numbers
+        # misled the operator about the live loop gains (2026-07-31).
+        # Disabled rather than wired: Continuous Scan > Feedback is the
+        # one true gains control (KPGA/KIGA -> ISR PI).
+        self.ui.wgtLePID.setEnabled(False)
+        self.ui.wgtLePID.setToolTip(
+            "Disabled — never functional.  Set loop gains in "
+            "Continuous Scan > Feedback (Kp/Ki).")
         self.ui.leTargetDAC.setText("20")   # Auto Approach current threshold
         self.ui.leSamples.setText("3")      # Scanning-tab Samples/Pix
 
@@ -297,10 +428,12 @@ class Widget(QWidget):
         self.stab_log_file = None     # open CSV file handle while recording
         self.stab_log_writer = None   # csv.writer bound to stab_log_file
         self.stab_log_path = None     # path of the current log file
+        self._stab_clear_ms = None    # Clear watermark: verdicts grade only
+                                      # samples after this firmware millis
         self._stab_reader = None      # SerialReaderThread while streaming
         self._stab_streaming = False  # True when STRM push mode owns the port
         self._stab_stream_frames = 0  # frames received (stream watchdog)
-        self._raw_logger = raw_logger.RawLogger(log_dir="raw")
+        self._raw_logger = raw_logger.RawLogger()   # -> data_paths day folder
         self._raw_reader = None       # dedicated reader if nothing else runs
         self._raw_decim = 0
         self.build_stability_tab()
@@ -346,6 +479,7 @@ class Widget(QWidget):
         # happening" — the feed was down to the 9 Hz poll).  Re-arm once
         # the port has been quiet for two consecutive checks.
         self._rearm_quiet = 0
+        self._raw_rearm_quiet = 0
         self._rearm_timer = QTimer(self)
         self._rearm_timer.timeout.connect(self._rearm_stream_check)
         self._rearm_timer.start(2000)
@@ -632,6 +766,42 @@ class Widget(QWidget):
 
     def closeEvent(self, event):
         self._save_dac_xy()
+        # Finalize every recorder so sidecars get their end-of-capture
+        # totals (all are crash-safe without this, but a clean close should
+        # leave a clean record).
+        try:
+            if self._raw_logger.is_active():
+                self.raw_stop(src="auto")
+        except Exception:
+            pass
+        try:
+            self._stop_session_recording()
+        except Exception:
+            pass
+        # Join every reader QThread before Qt tears the object tree down.
+        # The scan reader outlives HALT by design (it carries the recording
+        # stream) and was never stopped at close — destroying it running
+        # aborted the process (exit 9) on every post-scan close (2026-07-31).
+        try:
+            self._scan_ctrl.shutdown()
+        except Exception:
+            pass
+        for attr in ("_stab_reader", "_raw_reader"):
+            try:
+                r = getattr(self, attr, None)
+                if r is not None and r.isRunning():
+                    r.stop()
+                    r.wait(2000)
+            except Exception:
+                pass
+        try:
+            t = getattr(self, "thread", None)   # grid-spectro worker thread
+            if t is not None and t.isRunning():
+                t.quit()
+                t.wait(2000)
+        except Exception:
+            pass
+        session_journal.stop()
         super().closeEvent(event)
 
     def _restore_dac_xy(self):
@@ -656,13 +826,32 @@ class Widget(QWidget):
         if not port:
             print("[CMD] OPEN  no port selected")
             return
+        if self.stm.is_opened:
+            # Clicking Open twice collided with our own held port and
+            # surfaced as a scary Access-denied (log 03:06, 2026-07-31).
+            stm_control.logger.info(
+                f"OPEN skipped - port already open in this GUI; use Clear/"
+                f"Reset first if you want to reopen {port}")
+            return
         print(f"[CMD] OPEN  port={port}")
         try:
             self.stm.open(port)
         except Exception as e:
             print(f"[CMD] OPEN failed: {e}")
+            # logger => reaches the on-screen log pane + stm.log, unlike
+            # print which only reaches the console (2026-07-31).
+            stm_control.logger.error(
+                stm_control.describe_open_failure(port, e))
             return
         self._settings.setValue("serial/port", port)
+        # ISR rate from device calibration (SETD is volatile — firmware
+        # boots at 40 µs).  100 kHz bench-validated 2026-07-31 (DIAG:
+        # 4-5 µs worst tick, zero overruns).  NOTE: KIGA integrates per
+        # tick, so loop gain scales with this rate — retune Ki if the
+        # rate changes.
+        isr_hz = float(getattr(self._cal, "control_rate_hz", 25000.0))
+        dt_us = max(10, int(round(1e6 / isr_hz)))
+        self.stm.send_cmd(f"SETD {dt_us}", src="auto")
         # Recording posture (operator directive 2026-07-14): record ALL data
         # at ALL times while the COM port is working — journal + 200 Hz
         # status stream start with the port, not on demand, so any hour of
@@ -673,6 +862,12 @@ class Widget(QWidget):
                 session_journal.start(port=port)
             session_journal.record("port_open", path=port)
             self._start_session_recording()
+            # Record-everything (operator directive 2026-07-26): the 25 kHz
+            # raw ISR tap runs whenever the port does.  Retroactive stories
+            # ("we just touched the tip", "changed the gain") only work if
+            # the ground truth was already on disk.  One continuous file
+            # per capture — never rotated or pruned.
+            self.raw_start(decim=1, src="auto")
             self._restore_dac_xy()
 
     # ----------------------
@@ -807,13 +1002,95 @@ class Widget(QWidget):
         print(f"[CMD] APPROACH  steps={steps}  targetdac={targetdac}")
         self.stm.approach(targetdac,steps)
 
+    def _snap_pixels_pow2(self, val):
+        """Snap Pixels/line to a power of two, stepping in the direction
+        the user moved.  Nearest-snapping made the arrows dead (512 +64
+        -> 576 -> snapped straight back to 512); moving to the next power
+        in the direction of travel makes one arrow press = one step."""
+        if self._cs_px_snapping:
+            return
+        opts = (2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048)
+        last = getattr(self, "_cs_px_last", 512)
+        if val in opts:
+            self._cs_px_last = val
+            return
+        if val > last:
+            best = min([o for o in opts if o > last] or [opts[-1]])
+        elif val < last:
+            best = max([o for o in opts if o < last] or [opts[0]])
+        else:
+            best = min(opts, key=lambda o: (abs(o - val), o))
+        self._cs_px_snapping = True
+        self._cs_pixels.setValue(best)
+        self._cs_px_snapping = False
+        self._cs_px_last = best
+
+    def _update_linerate_ceiling(self, *_):
+        """Line-rate max from device calibration + current pixels/line,
+        plus the REALIZED rate after the firmware's samples/px floor."""
+        px = max(2, self._cs_pixels.value())
+        isr = float(getattr(self._cal, "control_rate_hz", 25000.0))
+        cap = float(getattr(self._cal, "line_rate_ceiling_hz", 195.0))
+        eff = min(cap, isr / px)
+        self._cs_linerate.setRange(0.01, eff)
+        self._cs_linerate.setToolTip(
+            f"Device ceiling (calibration): min({cap:g} Hz, "
+            f"{isr:g} ISR Hz / {px} px) = {eff:.1f} Hz.  The ISR needs "
+            f"≥1 sample/px; above this the true rate saturates.")
+        # Mirror the firmware's updateStepSizes(): spp = floor(isr/(rate*px)),
+        # clamped >= 1; realized rate = isr / (spp * px).
+        if not hasattr(self, "_cs_spp") or not hasattr(self, "_cs_realized"):
+            return   # tab still under construction
+        req = self._cs_linerate.value()
+        spp_ui = self._cs_spp.value()
+        spp = spp_ui if spp_ui > 0 else max(1, int(isr / max(req * px, 1e-9)))
+        real = isr / (spp * px)
+        # Say WHAT limits the max — "arrows stop at 48.8" confused the
+        # operator when 512 px was the silent limiter (2026-07-31).
+        # SHORT text (the long sentence made Scan geometry the widest
+        # column and squished Current-live, operator 2026-07-31); the
+        # full explanation lives in the tooltip.
+        if isr / px <= cap:
+            lim_short = f"max {isr / px:.1f} @{px}px"
+            lim_long = (f"max {isr / px:.1f} Hz at {px} px — lower "
+                        f"Pixels/line for faster")
+        else:
+            lim_short = f"max {cap:g} Hz"
+            lim_long = f"max {cap:g} Hz (calibration ceiling)"
+        self._cs_realized.setText(f"{real:.1f} Hz · {lim_short}")
+        self._cs_realized.setToolTip(
+            f"Realized {real:.2f} Hz with {spp} sample"
+            f"{'s' if spp != 1 else ''}/px"
+            f"{' (auto)' if spp_ui == 0 else ''}; {lim_long}.  "
+            f"The ISR needs ≥1 sample/px.")
+
+    def _sync_cc_target_from_pa(self, *_):
+        """Mirror the pA setpoint into the Scanning tab's counts box."""
+        counts = self._scan_ctrl._pa_to_setpoint_lsb(
+            self._cs_setpoint.value())
+        self.ui.leCCVal.setText(str(counts))
+
+    def _sync_pa_from_cc_target(self):
+        """Editing the counts box writes back to the pA setpoint."""
+        try:
+            counts = int(self.ui.leCCVal.text())
+        except ValueError:
+            return
+        pa = self._scan_ctrl._setpoint_lsb_to_pa(counts)
+        self._cs_setpoint.blockSignals(True)
+        self._cs_setpoint.setValue(pa)
+        self._cs_setpoint.blockSignals(False)
+
     @Slot(bool)
     def on_chkConstCurrent_toggled(self, checked):
         if checked:
-            # It's safer to get the value directly from the UI here
+            # leCCVal mirrors the unified pA setpoint (gain-aware); it is
+            # still read directly so a hand-typed value also works.
             try:
                 target = int(self.ui.leCCVal.text())
-                print(f"[CMD] CONST_CURRENT_ON target_adc={target}")
+                pa = self._scan_ctrl._setpoint_lsb_to_pa(target)
+                print(f"[CMD] CONST_CURRENT_ON target_adc={target} "
+                      f"(~{pa:.0f} pA at current gain)")
                 self.stm.turn_on_const_current(target)
             except ValueError:
                 print("Error: Invalid target value in leCCVal")
@@ -1256,10 +1533,18 @@ class Widget(QWidget):
     @Slot(int)
     def _on_preamp_gain(self, _idx):
         g = float(self._preamp_gain.currentData())
+        old = float(stm_control.STM_Status.preamp_gain)
         stm_control.STM_Status.preamp_gain = g
         self._settings.setValue("preamp/gain", g)
+        # tm-anchored journal entry: a gain change must be locatable inside
+        # the raw stream during post-processing.
+        session_journal.setting("preamp_gain", old, g)
         session_journal.note(f"preamp gain set to {g:g}X", src="human")
         print(f"[PREAMP] gain = {g:g}X (current conversion now /{g:g})")
+        # The pA<->counts setpoint mapping just changed scale — refresh the
+        # Scanning tab's CC-target mirror so the two views stay equal.
+        if hasattr(self, "_cs_setpoint"):
+            self._sync_cc_target_from_pa()
 
     @Slot()
     def _mark_dac_edit(self):
@@ -1414,9 +1699,10 @@ class Widget(QWidget):
             prefix = self.ui.leSave.text().strip()
         except Exception:
             prefix = ""
-        prefix = prefix or "stability"
+        prefix = data_paths.resolve_prefix(prefix, default_base="stability")
         ts = int(datetime.timestamp(datetime.now()) * 1000)
-        self.stab_log_path = f"{prefix}_stability_{ts}.csv"
+        self.stab_log_path = (
+            f"{prefix}_stability_{ts}{session_journal.tag()}.csv")
         self._status_logger.start(self.stab_log_path)
         if not session_journal.is_active():
             session_journal.start(csv=self.stab_log_path)
@@ -1516,6 +1802,53 @@ class Widget(QWidget):
                 self._start_stab_stream()
         else:
             self._rearm_quiet = 0
+        # Raw ISR tap is part of the same always-on posture.  Unlike the
+        # stream it also runs DURING scans (rawBlock is wired on every
+        # reader), so the only bad moments are legacy synchronous ops
+        # (_suppress_auto_record) and a busy port.  Same 2-check
+        # hysteresis + backoff as above.
+        if (self.stm.is_opened
+                and self._recording
+                and not self._raw_logger.is_active()
+                and not self.stm.busy
+                and not getattr(self, "_suppress_auto_record", False)):
+            self._raw_rearm_quiet += 1
+            if self._raw_rearm_quiet >= 2:
+                self._raw_rearm_quiet = -8
+                print("[RAW] tap down and port up — (re)arming 25 kHz "
+                      "raw capture")
+                self.raw_start(decim=1, src="auto")
+        else:
+            self._raw_rearm_quiet = 0
+        self._update_rec_indicator()
+
+    def _launch_day_review(self):
+        """Sweep player on today's day folder, as an independent process.
+        It reads only files (indexes rebuild automatically for growing
+        .frames), so the live GUI and serial port are untouched."""
+        import subprocess
+        here = os.path.dirname(os.path.abspath(__file__))
+        day = data_paths.day_dir()
+        subprocess.Popen(
+            [sys.executable,
+             os.path.join(here, "replay", "sweep_player.py"), day],
+            cwd=here)
+        session_journal.record("day_review_launched", path=day)
+        print(f"[REVIEW] sweep player launched on {day}")
+
+    def _update_rec_indicator(self):
+        rec_on = (self._recording
+                  and (self._stab_streaming or self._scan_ctrl.is_running()))
+        raw_on = self._raw_logger.is_active()
+        self._rec_state_lbl.setText(
+            f"REC {'●' if rec_on else '○'}  RAW {'●' if raw_on else '○'}")
+        tips = []
+        if rec_on and getattr(self, "stab_log_path", None):
+            tips.append(f"status: {self.stab_log_path}")
+        if raw_on and self._raw_logger.base_path:
+            tips.append(f"raw: {self._raw_logger.base_path}.raw "
+                        f"({self._raw_logger.n_samples} samples)")
+        self._rec_state_lbl.setToolTip("\n".join(tips) or "not recording")
 
     def _pause_stab_stream_for_scan(self):
         """Stop only the recording's reader thread, keeping firmware STRM
@@ -1622,10 +1955,18 @@ class Widget(QWidget):
             self._raw_reader.rawBlock.connect(
                 self._raw_logger.on_block, QtCore.Qt.DirectConnection)
             self._raw_reader.start()
-        fs = 1e6 / (40.0 * decim)     # nominal (control_dt_us default 40)
+        # The GUI sends SETD from calibration at every port-open (100 kHz
+        # era, 2026-07-31), so record the REAL tick — the old hardcoded
+        # 40 µs mislabeled post-speedup captures by 4×.  Absolute sample
+        # time = block t0_millis + i*dt*decim.
+        isr_hz = float(getattr(self._cal, "control_rate_hz", 25000.0))
+        control_dt_us = 1e6 / isr_hz
+        fs = 1e6 / (control_dt_us * decim)
         self._raw_logger.start({
             "decim": decim,
             "nominal_sample_hz": fs,
+            "control_dt_us": control_dt_us,
+            "preamp_gain": float(stm_control.STM_Status.preamp_gain),
             "bias_dac": self.ui.spnBias.value(),
         })
         self._raw_decim = decim
@@ -1680,7 +2021,8 @@ class Widget(QWidget):
         # the in-memory current-only buffer can't provide).
         verdict = None
         try:
-            verdict = stab_runner.analyze(self.stab_log_path)
+            verdict = stab_runner.analyze(self.stab_log_path,
+                                          since_ms=self._stab_clear_ms)
         except Exception as e:
             print(f"[STAB] verdict unavailable: {e}")
         session_journal.record("stab_window_stop", path=self.stab_log_path)
@@ -1700,7 +2042,11 @@ class Widget(QWidget):
         self.pltStability.update_histogram([], [], None)
         self.lblStabStats.setText("No data yet.")
         self.lblStabDrift.setText("")
-        print("[STAB] cleared")
+        # Reset the VERDICT window too: grading at Stop only considers
+        # samples after this moment (the CSV keeps recording everything).
+        self._stab_clear_ms = self.stab_last_t
+        session_journal.record("stab_cleared", since_ms=self._stab_clear_ms)
+        print("[STAB] cleared (verdict window reset)")
 
         self.pltFourierPsd.update_plot([], [])
         self.pltFourierPsd.clear_marker()
@@ -1802,9 +2148,10 @@ class Widget(QWidget):
             prefix = self.ui.leSave.text().strip()
         except Exception:
             prefix = ""
-        prefix = prefix or "stability"
+        prefix = data_paths.resolve_prefix(prefix, default_base="stability")
         ts = int(datetime.timestamp(datetime.now()) * 1000)
-        self.stab_log_path = f"{prefix}_stability_{ts}.csv"
+        self.stab_log_path = (
+            f"{prefix}_stability_{ts}{session_journal.tag()}.csv")
         self.stab_t0 = None
         try:
             self.stab_log_file = open(self.stab_log_path, "w", newline="")
@@ -2025,6 +2372,7 @@ class Widget(QWidget):
         )
         self.pltFourierPsd.set_log_mode(x=True, y=True)
         self.pltFourierPsd.disable_si_prefix()
+        self.pltFourierPsd.add_x_region_selector()
         row.addWidget(self.pltFourierPsd, 1)
 
         self.pltFourierAllan = plotframe.PlotFrame()
@@ -2068,6 +2416,19 @@ class Widget(QWidget):
             return "", "black"
         name = verdict.get("verdict", "?")
         label = self._VERDICT_LABELS.get(name, name)
+        # CONTACT covers everything from occasional tip touches to a fully
+        # planted tip — say which one this was (bench 2026-07-24: "railed
+        # against surface" over a session that was mostly good tunneling).
+        if name == "CONTACT":
+            frac = verdict.get("rail_fraction")
+            if frac is not None:
+                kind = ("sustained contact" if frac >= 0.5
+                        else "intermittent tip-surface contact")
+                label = f"CONTACT ({frac:.0%} of samples railed - {kind})"
+                floor = verdict.get("floor")
+                if frac < 0.5 and floor:
+                    label += (f"; free samples avg "
+                              f"{floor['signed_mean_pA']:.0f} pA")
         crit = verdict.get("criteria", {})
         mos = crit.get("signed_mean_over_sigma")
         detail = ""
@@ -2075,7 +2436,19 @@ class Widget(QWidget):
             need = crit.get("required_sigmas", 3.0)
             detail = f"  (signed mean/sigma={mos:.2f}, need >={need:.0f})"
         color = self._VERDICT_COLORS.get(name, "#b00020")   # default red
-        return f"VERDICT: {label}{detail}\n", color
+        # Second line: what the junction was doing at Stop (the overall
+        # grade covers the whole session-cumulative recording).
+        tail = verdict.get("tail")
+        tail_line = ""
+        if tail:
+            tl = self._VERDICT_LABELS.get(tail["verdict"], tail["verdict"])
+            med = tail.get("median_pA")
+            med_txt = f", median {med:.0f} pA" if med is not None else ""
+            tail_line = (f"final {tail['seconds']:.0f} s: {tl} "
+                         f"(rail {tail['rail_fraction']:.0%}{med_txt})\n")
+            if tail["verdict"] != name:
+                color = self._VERDICT_COLORS.get(tail["verdict"], color)
+        return f"VERDICT: {label}{detail}\n{tail_line}", color
 
     def refresh_fourier_analysis(self, psd, allan, verdict=None):
         """Populate the tab from the PSD + Allan results computed at Stop
@@ -2331,7 +2704,12 @@ class Widget(QWidget):
 
     # this function saves the IV data to a text file.
     def save_data_to_file(self,filename_prefix, data_to_store):
-        ts = int(datetime.timestamp(datetime.now()) * 1000)
+        filename_prefix = data_paths.resolve_prefix(filename_prefix)
+        # ts string carries the session token: capture time first, then
+        # _s<sessionId> correlating all files of one GUI run (crash-resume
+        # days produce several sessions).
+        ts = f"{int(datetime.timestamp(datetime.now()) * 1000)}" \
+             f"{session_journal.tag()}"
         with open(f"{filename_prefix}_{ts}.csv", 'w', newline='') as csvfile:
             writer = csv.writer(csvfile)
             for data in data_to_store:
@@ -2339,7 +2717,9 @@ class Widget(QWidget):
 
     def save_iv_ascii(self,prefix, x, y):
         #ts = int(datetime.datetime.now().timestamp() * 1000)
-        ts = int(datetime.timestamp(datetime.now()) * 1000)
+        prefix = data_paths.resolve_prefix(prefix)
+        ts = f"{int(datetime.timestamp(datetime.now()) * 1000)}" \
+             f"{session_journal.tag()}"
         filename = f"{prefix}_{ts}.txt"
 
         with open(filename, "w") as f:
@@ -2378,9 +2758,11 @@ class Widget(QWidget):
 
         header_str = "\n".join(header)
 
-        # Pad header to multiple of 4 bytes
+        # Pad header to multiple of 4 bytes.  The GSF spec requires at least
+        # one NUL terminator, so an already-aligned header takes a full 4 --
+        # never 0, or Gwyddion cannot find the header end and rejects the file.
         header_bytes = header_str.encode("utf-8")
-        padding = (4 - (len(header_bytes) % 4)) % 4
+        padding = 4 - (len(header_bytes) % 4)
         header_bytes += b"\0" * padding
 
         with open(filename, "wb") as f:
@@ -2392,9 +2774,11 @@ class Widget(QWidget):
     # ----------------------
 
     def save_scan_image(self, prefix):
+        prefix = data_paths.resolve_prefix(prefix)
         print(prefix)
         x_start, x_end, x_res, y_start, y_end, y_res = self.stm.scan_config
-        ts = int(datetime.timestamp(datetime.now()) * 1000)
+        ts = f"{int(datetime.timestamp(datetime.now()) * 1000)}" \
+             f"{session_journal.tag()}"
         np.savetxt(f"{prefix}_adc_{ts}.txt", self.stm.scan_adc)
         print(f"{prefix}_adc_{ts}.txt")
         #now as tiff
@@ -2456,25 +2840,68 @@ class Widget(QWidget):
         geo_form = QFormLayout(geo_box)
 
         self._cs_scansize = QDoubleSpinBox()
-        self._cs_scansize.setRange(0.1, 10000.0)
-        self._cs_scansize.setDecimals(2)
+        # Real limits (2026-07-31 audit): max = full 20-bit position range
+        # = 50 nm at the 5 nm/V cal (the old 10,000 nm cap would rail the
+        # DACs).  Min: one 20-bit unit = 47.7 fm; pixels stay distinct
+        # down to pixels-per-line units (61 pm at 1280 px), so 0.01 nm
+        # allows sub-0.1 nm experiments; below ~1 unit/px pixels repeat
+        # positions (oversampling, not error).
+        self._cs_scansize.setRange(0.01, 50.0)
+        self._cs_scansize.setDecimals(3)
         # 30 nm stays within a ±5 V DAC at the default 5 nm/V piezo cal
         self._cs_scansize.setValue(30.0)
         self._cs_scansize.setSuffix(" nm")
+        self._cs_scansize.setToolTip(
+            "Position unit = 47.7 fm (16-bit AD5761 + sigma-delta to "
+            "20-bit; 50 nm full range).  Pixels advance scanSize/pixels "
+            "units — distinct down to 0.061 nm at 1280 px/line.")
         geo_form.addRow("Scan size:", self._cs_scansize)
 
         self._cs_pixels = QSpinBox()
         self._cs_pixels.setRange(2, 2048)
         self._cs_pixels.setValue(512)
         self._cs_pixels.setSingleStep(64)
+        # Powers of two only: the firmware's dy = dx / pixelsPerLine is an
+        # integer division, exact only when pixelsPerLine divides 2^32.
+        # At 1280 the Y triangle runs 640.11 lines per half-cycle against a
+        # 640-line counter wrap — +0.21 lines of slip per cycle, which the
+        # yCount resync guard then yanks back, tearing the image.  Measured
+        # 2026-07-31 after the operator saw 1280 look nothing like 512.
+        self._cs_pixels.setToolTip(
+            "Pixels per line (snaps to powers of two).  Non-power-of-two "
+            "counts make the firmware's Y step truncate, so the Y triangle "
+            "and the line counter drift apart and the image tears.")
+        self._cs_px_snapping = False
+        self._cs_px_last = 512
+        # No per-keystroke signals: with tracking on, typing "512" fired at
+        # "5" and got snapped to 4 before the rest arrived (audit 07-31).
+        self._cs_pixels.setKeyboardTracking(False)
+        self._cs_pixels.valueChanged.connect(self._snap_pixels_pow2)
         geo_form.addRow("Pixels/line:", self._cs_pixels)
 
         self._cs_linerate = QDoubleSpinBox()
-        self._cs_linerate.setRange(0.01, 50.0)
+        # Ceiling is DEVICE CONFIG, not a GUI constant (operator directive
+        # 2026-07-31): effective max = min(cal.line_rate_ceiling_hz,
+        # cal.control_rate_hz / pixels-per-line) — the ISR needs ≥1
+        # sample/px, so above that the firmware clamps and the true rate
+        # saturates.  Recomputed when pixels/line or calibration changes.
         self._cs_linerate.setDecimals(2)
         self._cs_linerate.setValue(30.0)
         self._cs_linerate.setSuffix(" Hz")
         geo_form.addRow("Line rate:", self._cs_linerate)
+        # Realized rate ≠ requested: auto samples/px floors, so e.g. a
+        # requested 30 Hz at 512 px ran 48.8 real (audit 2026-07-31).
+        # Wrapped + width-capped so this label can never widen the column
+        # (its old one-line sentence squished Current-live, 2026-07-31).
+        self._cs_realized = QLabel("")
+        self._cs_realized.setWordWrap(True)
+        self._cs_realized.setMaximumWidth(150)
+        geo_form.addRow("Realized:", self._cs_realized)
+        self._cs_pixels.valueChanged.connect(self._update_linerate_ceiling)
+        self._cs_linerate.valueChanged.connect(self._update_linerate_ceiling)
+        self._cal.changed.connect(self._update_linerate_ceiling)
+        # (_cs_spp is created below; its hookup + the initial refresh
+        # happen there — wiring it here crashed startup, 2026-07-31)
 
         # Explicit sample density (FW 5.2 SPPX): 0 = auto-derived from
         # line rate x pixels/line; >0 pins samples averaged per pixel —
@@ -2487,6 +2914,36 @@ class Widget(QWidget):
             "Samples averaged per pixel (SPPX).  auto = derived from line "
             "rate and pixels/line; pinning it changes the true line rate.")
         geo_form.addRow("Samples/px:", self._cs_spp)
+        self._cs_spp.valueChanged.connect(self._update_linerate_ceiling)
+        self._update_linerate_ceiling()
+
+        # Line re-scan (FW 5.3 LRPT): each row is scanned N times and the
+        # passes are averaged in-firmware before ONE line is emitted.
+        # Attacks the 10–300 Hz streak band that per-pixel averaging
+        # (~200 µs window) cannot reach (bench 2026-07-30).  Power-of-two
+        # ladder only: noise falls as sqrt(N), so intermediate N are
+        # indistinguishable, and the ladder avoids the dy-floor geometry
+        # corner at extreme spp x pixels x N.  FW <= 5.2 ignores LRPT.
+        from PySide6.QtWidgets import QComboBox as _LRCB
+        self._cs_linerepeat = _LRCB()
+        for n in (1, 2, 4, 8, 16, 32, 64):
+            label = ("off" if n == 1 else
+                     f"×{n}  (noise ÷{n ** 0.5:.1f}, time ×{n})")
+            self._cs_linerepeat.addItem(label, n)
+        saved_lr = int(self._settings.value("scan/line_repeat", 1, type=int))
+        li = max(0, [1, 2, 4, 8, 16, 32, 64].index(saved_lr)
+                 if saved_lr in (1, 2, 4, 8, 16, 32, 64) else 0)
+        self._cs_linerepeat.setCurrentIndex(li)
+        self._cs_linerepeat.setToolTip(
+            "Line re-scan (LRPT): firmware averages N passes per row and "
+            "emits one line.  off = single pass.  Rejects noise slower "
+            "than one line (the streak band); sweep time scales by N.")
+        # Don't let the long "×64 (noise ÷8.0, ...)" items set the column
+        # width — elide when closed, full labels still show in the popup.
+        self._cs_linerepeat.setSizeAdjustPolicy(
+            _LRCB.AdjustToMinimumContentsLengthWithIcon)
+        self._cs_linerepeat.setMinimumContentsLength(10)
+        geo_form.addRow("Line re-scan:", self._cs_linerepeat)
 
         self._cs_xofs = QDoubleSpinBox()
         self._cs_xofs.setRange(-5000.0, 5000.0)
@@ -2502,6 +2959,10 @@ class Widget(QWidget):
         self._cs_yofs.setSuffix(" nm")
         geo_form.addRow("Y offset:", self._cs_yofs)
 
+        # Width priorities (operator 2026-07-31): Current-live is the
+        # first-class citizen of this strip; Scan geometry runs deep and
+        # NARROW; Feedback/Control are narrowed; Z-piezo stays as-is.
+        geo_box.setMaximumWidth(250)
         top_row.addWidget(geo_box)
 
         # ---- Feedback (Bias lives on the left-panel spnBias — not duplicated)
@@ -2517,6 +2978,14 @@ class Widget(QWidget):
         self._cs_setpoint.setValue(1000.0)
         self._cs_setpoint.setSuffix(" pA")
         fb_form.addRow("Setpoint:", self._cs_setpoint)
+        # ONE setpoint, two views (operator question 2026-07-31): CCON and
+        # SETP/ENGA drive the SAME ISR PI setpoint, so this pA box and the
+        # Scanning tab's CC target (raw ADC counts) must never disagree.
+        # This box is the source of truth; the counts box mirrors it, and
+        # editing the counts box writes back here (converted, gain-aware).
+        self._cs_setpoint.valueChanged.connect(self._sync_cc_target_from_pa)
+        self.ui.leCCVal.editingFinished.connect(self._sync_pa_from_cc_target)
+        self._sync_cc_target_from_pa()
 
         self._cs_kp = QDoubleSpinBox()
         self._cs_kp.setRange(0.0, 1e6)
@@ -2544,6 +3013,7 @@ class Widget(QWidget):
         self._cs_drift_lbl = QLabel("drift: —")
         fb_form.addRow("", self._cs_drift_lbl)
 
+        fb_box.setMaximumWidth(215)
         top_row.addWidget(fb_box)
 
         # ---- Z-piezo position gauge -----------------------------------------
@@ -2564,12 +3034,18 @@ class Widget(QWidget):
         # bench 2026-07-14).  Dragging streams DACZ through the same
         # throttled sender as the Configuration-tab drag bar; incoming
         # stream updates leave the handle alone while it is being dragged.
-        self._cs_zslider = QSlider(Qt.Vertical)
+        self._cs_zslider = PrecisionSlider(Qt.Vertical)
         self._cs_zslider.setRange(0, 65535)
         self._cs_zslider.setValue(32768)
         self._cs_zslider.setSingleStep(10)
         self._cs_zslider.setPageStep(1000)
         self._cs_zslider.setMinimumWidth(28)
+        self._cs_zslider.setToolTip(
+            "Wheel: 10 LSB - Shift: 1 LSB (fine) - Ctrl: 100 - "
+            "Ctrl+Shift: 1000 (jump)\n"
+            "Shift+drag: geared fine drag, 1 LSB per pixel "
+            "(Ctrl+Shift+drag: 5 LSB/px)\n"
+            "Plain drag: normal coarse slider drag")
         # Inverted appearance so the MAX (high DAC = toward sample = more
         # current, per the firmware approach sweeping DAC up) sits at the
         # BOTTOM.  Result: dragging DOWN moves the tip toward the sample
@@ -2590,6 +3066,11 @@ class Widget(QWidget):
         self._cs_zowner = QLabel("")
         self._cs_zowner.setStyleSheet("color: #d07000; font-weight: bold;")
         self._cs_zowner.setWordWrap(True)
+        # Reserve the banner's 3-line footprint permanently: its text
+        # toggling empty<->3 lines resized the whole strip on every CC
+        # change (part of the lose-Maximized bug, 2026-07-31).
+        self._cs_zowner.setMinimumHeight(
+            self._cs_zowner.fontMetrics().lineSpacing() * 3 + 6)
         gauge_layout.addWidget(self._cs_zowner, alignment=Qt.AlignHCenter)
         top_row.addWidget(gauge_box)
 
@@ -2609,6 +3090,16 @@ class Widget(QWidget):
         self._cs_btn_retract.clicked.connect(self._scan_ctrl.retract)
         act_layout.addWidget(self._cs_btn_retract)
 
+        self._cs_btn_lattice = QPushButton("Lattice FFT (Tier 3)")
+        self._cs_btn_lattice.setToolTip(
+            "Median-stack EVERY complete sweep of the current .frames "
+            "recording (hundreds — not the live view's 10), 2-D FFT, and "
+            "hunt the Au(111) hexagon (0.288 nm).  If found, the spot "
+            "spacing IS the absolute XY calibration.  Runs offline as a "
+            "subprocess; PNG + JSON save next to the recording.")
+        self._cs_btn_lattice.clicked.connect(self._on_lattice_fft)
+        act_layout.addWidget(self._cs_btn_lattice)
+
         self._cs_btn_run = QPushButton("▶  RUN")
         self._cs_btn_run.setStyleSheet("background-color: #4CAF50; color: white;")
         self._cs_btn_run.clicked.connect(self._on_cs_run)
@@ -2626,6 +3117,11 @@ class Widget(QWidget):
             self._cs_super_mode.addItem(label, key)
         self._cs_super_mode.setCurrentIndex(
             list(superscan.MODES).index(superscan.DEFAULT_MODE))
+        # "Variable-Pixel Linear Reconstruction (Drizzle)" must not set
+        # the Control column width — elide closed, full label in popup.
+        self._cs_super_mode.setSizeAdjustPolicy(
+            _QCB.AdjustToMinimumContentsLengthWithIcon)
+        self._cs_super_mode.setMinimumContentsLength(12)
         act_layout.addWidget(self._cs_super_mode)
 
         self._cs_btn_super = QPushButton("Build Superscan (10)")
@@ -2638,8 +3134,12 @@ class Widget(QWidget):
         act_layout.addStretch()
 
         self._cs_status_lbl = QLabel("Idle")
+        self._cs_status_lbl.setWordWrap(True)
         act_layout.addWidget(self._cs_status_lbl)
 
+        # Rarely interacted with — narrowest column of the strip
+        # (operator 2026-07-31).
+        act_box.setMaximumWidth(185)
         top_row.addWidget(act_box)
 
         # ---- Live current scroll (copy of the Main tab amp display) ------
@@ -2652,11 +3152,16 @@ class Widget(QWidget):
         self._cs_amp = plotframe.PlotFrame()
         self._cs_amp.add_plot("Current", "time(s)", "amp",
                               pen=pg.mkPen("r", width=2))
+        # Robust vertical range: 1–99 percentile of the visible history,
+        # so rail excursions can't flatten the trace into a solid block;
+        # the axis label reads "amp (clipped)" while samples are cut off.
+        self._cs_amp.set_robust_y(1.0, 99.0, ylabel="amp")
         amp_layout.addWidget(self._cs_amp)
-        # Narrow horizontal strip: the pyqtgraph widget otherwise expands
-        # square-ish and inflates the whole top row (bench 2026-07-14).
-        # Width stays responsive (stretch=1); height is capped so the top
-        # row keeps the height the groupboxes set on their own.
+        # First-class citizen of the strip (operator 2026-07-31): every
+        # other groupbox is width-capped, this one takes ALL remaining
+        # width (stretch) and is guaranteed a wide floor.  Height stays
+        # capped so the strip keeps the height the groupboxes set.
+        amp_box.setMinimumWidth(360)
         amp_box.setMaximumHeight(235)
         self._cs_amp.setMinimumHeight(80)
         top_row.addWidget(amp_box, stretch=1)
@@ -2679,7 +3184,7 @@ class Widget(QWidget):
         # Wire ScanController → frame log / LiveRaster / gauge / status.
         # The frame logger MUST be connected first: Qt invokes slots in
         # connection order, so every line is on disk before it is drawn.
-        self._frame_logger = frame_logger.FrameLogger(log_dir="scans")
+        self._frame_logger = frame_logger.FrameLogger()  # -> data_paths day folder
         self._scan_ctrl.lineReady.connect(self._frame_logger.on_line)
         self._scan_ctrl.lineReady.connect(self._cs_raster.update_line)
         self._cs_frames_since_run = 0
@@ -2740,6 +3245,9 @@ class Widget(QWidget):
         self._scan_ctrl.set_pixels_per_line(n)
         self._scan_ctrl.set_line_rate(self._cs_linerate.value())
         self._scan_ctrl.set_samples_per_pixel(self._cs_spp.value())
+        lr = int(self._cs_linerepeat.currentData())
+        self._scan_ctrl.set_line_repeat(lr)
+        self._settings.setValue("scan/line_repeat", lr)
         self._scan_ctrl.set_offsets(self._cs_xofs.value(),
                                     self._cs_yofs.value())
         self._scan_ctrl.set_setpoint(self._cs_setpoint.value())
@@ -2807,6 +3315,81 @@ class Widget(QWidget):
         self._cs_frames_since_run += 1
 
     # ---- Superscan capture + reconstruct -------------------------------
+    def _on_lattice_fft(self):
+        """Tier-3 analysis on the active (or newest) frames recording."""
+        import glob
+        import subprocess
+        if self._frame_logger.is_active():
+            path = self._frame_logger.base_path + ".frames"
+        else:
+            cands = glob.glob(os.path.join(data_paths.day_dir(),
+                                           "scan_*.frames"))
+            if not cands:
+                self._cs_status_lbl.setText("Lattice FFT: no recording found")
+                return
+            path = max(cands, key=os.path.getmtime)
+        nm = float(self._cs_scansize.value())
+        script = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                              "lattice_fft.py")
+        self._lattice_proc = subprocess.Popen(
+            [sys.executable, script, path, str(nm)],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self._lattice_base = path[:-len(".frames")]
+        session_journal.note(
+            f"lattice FFT launched on {os.path.basename(path)} "
+            f"({nm:g} nm nominal)", src="human")
+        self._cs_status_lbl.setText("Lattice FFT running…")
+        from PySide6.QtCore import QTimer
+        self._lattice_timer = QTimer(self)
+        self._lattice_timer.setInterval(700)
+        self._lattice_timer.timeout.connect(self._poll_lattice_fft)
+        self._lattice_timer.start()
+
+    def _poll_lattice_fft(self):
+        import json as _json
+        p = getattr(self, "_lattice_proc", None)
+        if p is None or p.poll() is None:
+            return
+        self._lattice_timer.stop()
+        base = self._lattice_base
+        jpath, ppath = base + "_lattice.json", base + "_lattice.png"
+        if p.returncode != 0 or not os.path.isfile(jpath):
+            self._cs_status_lbl.setText(
+                f"Lattice FFT failed (rc={p.returncode}) — run "
+                f"lattice_fft.py by hand for the traceback")
+            return
+        with open(jpath) as f:
+            res = _json.load(f)
+        from PySide6.QtGui import QPixmap
+        from PySide6.QtWidgets import QDialog, QVBoxLayout
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Lattice FFT — Tier 3")
+        lay = QVBoxLayout(dlg)
+        img = QLabel()
+        pm = QPixmap(ppath)
+        if not pm.isNull():
+            img.setPixmap(pm.scaledToWidth(
+                1000, Qt.TransformationMode.SmoothTransformation))
+        lay.addWidget(img)
+        if res.get("ring_found"):
+            cal = res.get("xy_cal_factor_if_au_lattice")
+            verdict = (f"RING FOUND at {res['ring_spacing_nm']} nm — if "
+                       f"Au(111), XY calibration factor = {cal} "
+                       f"(true nm = nominal × factor)")
+        else:
+            top = res.get("peaks", [{}])[:1]
+            verdict = ("No hexagonal ring.  Strongest periodicity: "
+                       f"{top[0].get('spacing_nm', '—')} nm"
+                       if top else "No significant peaks.")
+        lbl = QLabel(f"{res['n_sweeps']} sweeps · {res['channel']} · "
+                     f"{res['scan_size_nm_nominal']:g} nm nominal\n{verdict}")
+        lbl.setWordWrap(True)
+        lay.addWidget(lbl)
+        dlg.show()
+        self._ss_popups.append(dlg)
+        self._cs_status_lbl.setText("Lattice FFT done")
+        session_journal.note(f"lattice FFT result: {verdict}", src="auto")
+
     def _on_build_superscan(self):
         """Capture N continuous-scan frames (countdown), reconstruct, popup.
         Frames are collected by folding one Y-triangle cycle per frame from
@@ -2821,6 +3404,7 @@ class Widget(QWidget):
         self._ss_frames = []
         self._ss_cur_lines = []
         self._ss_last_raw = -1
+        self._ss_seen_wrap = False   # discard the first, partial Y cycle
         self._ss_active = True
         self._cs_btn_super.setEnabled(False)
         self._scan_ctrl.lineReady.connect(self._ss_on_line)
@@ -2835,12 +3419,29 @@ class Widget(QWidget):
         if raw < self._ss_last_raw:      # one Y up+down cycle completed
             lines, self._ss_cur_lines = self._ss_cur_lines[:-1], \
                 [self._ss_cur_lines[-1]]
+            if not self._ss_seen_wrap:
+                # Capture began mid-cycle: that first frame is missing
+                # rows and (with forward-only folding) came out blank.
+                self._ss_seen_wrap = True
+                self._ss_last_raw = raw
+                return
             if len(lines) > self._ss_H:
+                # Match the live panel's channel transform: superscan
+                # always exponentially linearized while the raster showed
+                # log-units error, so the two looked nothing alike and
+                # rail pixels dominated the stack's color scale
+                # (2026-07-31).  Follow the raster's Err display mode.
                 setp = self._scan_ctrl._pa_to_setpoint_lsb(
                     self._cs_setpoint.value())
+                lin = getattr(self._cs_raster, "_lin_mode", True)
+                self._ss_lin = lin      # units for the save path
+                prep = ((lambda tr: superscan.linearize_err(tr, setp))
+                        if lin else (lambda tr: np.asarray(tr, float)))
                 folded = superscan.fold_frame(
-                    [(ln, superscan.linearize_err(tr, setp))
-                     for ln, tr in lines], self._ss_H)
+                    [(ln, prep(tr)) for ln, tr in lines], self._ss_H)
+                if folded is None:
+                    self._ss_last_raw = raw
+                    return               # unusable cycle; wait for the next
                 self._ss_frames.append(folded)
                 left = self._ss_target - len(self._ss_frames)
                 self._cs_status_lbl.setText(
@@ -2858,13 +3459,20 @@ class Widget(QWidget):
         self._ss_active = False
         self._cs_btn_super.setEnabled(True)
         mode = self._cs_super_mode.currentData()
+        # Optional Gwyddion-style row alignment of each input frame before
+        # registration/stacking (raster-bar checkbox); .frames stay raw.
+        ra_on, ra_method = self._cs_raster.row_align_params()
+        frames = ([live_raster._row_align(f, ra_method)
+                   for f in self._ss_frames] if ra_on else self._ss_frames)
         try:
-            hi, shifts, stats = superscan.superscan(self._ss_frames, mode=mode)
+            hi, shifts, stats = superscan.superscan(frames, mode=mode)
         except Exception as e:
             self._cs_status_lbl.setText(f"Superscan failed: {e}")
             return
         session_journal.note(
-            f"superscan {mode}: {stats['n_frames']} frames, "
+            f"superscan {mode}"
+            + (f" (row-align: {ra_method})" if ra_on else "")
+            + f": {stats['n_frames']} frames, "
             f"max drift {stats['max_drift_px']:.1f}px, "
             f"std {stats['single_frame_std']:.0f}->{stats['superscan_std']:.0f}",
             src="agent")
@@ -2886,6 +3494,25 @@ class Widget(QWidget):
             pf.set_levels(float(lo), float(hival))
         except Exception:
             pass
+        try:                    # fit the (now aspect-locked) image to view
+            pf.plot_item.getViewBox().autoRange()
+        except Exception:
+            pass
+        # Drizzle deposits onto an up-times-finer grid; without sub-pixel
+        # diversity between frames most cells get NO data and are filled
+        # from the plain upscaled mean.  Say so rather than presenting
+        # interpolation as measurement (operator saw a blank 4x, 07-31).
+        wt = stats.get("weight")
+        if wt is not None and wt.size and (wt == 0).any():
+            empty = float((wt == 0).mean()) * 100.0
+            warn = QLabel(
+                f"⚠ {empty:.0f}% of output cells had NO contributing "
+                f"sample (mean-filled).  Frames landed on the same "
+                f"sub-pixel phase — use a lower grid factor, or dither "
+                f"the scan window between frames.")
+            warn.setStyleSheet("color: #d07000; font-weight: bold;")
+            warn.setWordWrap(True)
+            lay.addWidget(warn)
         drift = stats["max_drift_px"]
         gain = (stats["single_frame_std"] / stats["superscan_std"]
                 if stats["superscan_std"] else 0)
@@ -2896,18 +3523,37 @@ class Widget(QWidget):
         # Physical scale: the folded frame spans the commanded scan size in
         # BOTH axes (square), independent of the up-sampling factor.
         scan_nm = float(self._cs_scansize.value())
-        scan_m = scan_nm * 1e-9
-        nm_per_px = scan_nm / hi.shape[1]   # after up-sampling
-        # ADC counts -> amps for a physically-labelled Z channel.
-        amp_img = (hi * stm_control.STM_Status.adc_to_amp(1)).astype(np.float32)
+        # nm/px is set by the FULL field over the full (pre-crop) grid; the
+        # image itself is cropped to the all-frames overlap region, so its
+        # physical span is smaller than the commanded scan size.
+        full_h, full_w = stats.get("full_shape", hi.shape)
+        nm_per_px = scan_nm / full_w
+        span_x_nm = nm_per_px * hi.shape[1]
+        span_y_nm = nm_per_px * hi.shape[0]
+        # Units follow the channel actually stacked: with CC engaged the
+        # raster (and therefore superscan) carries LOG-domain feedback
+        # error, which must not be relabelled as amps — every superscan
+        # saved tonight claimed "A" for log counts (audit 2026-07-31).
+        ss_lin = getattr(self, "_ss_lin", True)
+        if ss_lin:
+            amp_img = (hi * stm_control.STM_Status.adc_to_amp(1)
+                       ).astype(np.float32)
+            z_units, chan_lbl = "A", "current"
+        else:
+            amp_img = hi.astype(np.float32)
+            z_units, chan_lbl = "log", "feedback error (log units)"
+        cov = (f" · coverage ≥{stats['coverage_min']:.1f}"
+               if stats.get("coverage_min") is not None else "")
         lay.addWidget(QLabel(
-            f"pixel size {nm_per_px:.4f} nm/px · scan {scan_nm:.2f} nm "
-            f"(embedded in .gsf)"))
+            f"pixel size {nm_per_px:.4f} nm/px · overlap-cropped "
+            f"{span_x_nm:.2f}×{span_y_nm:.2f} nm of {scan_nm:.2f} nm "
+            f"commanded{cov} (embedded in .gsf)"))
 
         save = QPushButton("Save .gsf (scaled) + .npz")
         def _save():
             ts = int(datetime.timestamp(datetime.now()) * 1000)
-            base = os.path.join("scans", f"superscan_{ts}")
+            base = data_paths.day_path(
+                f"superscan_{ts}{session_journal.tag()}")
             # A few saturation-rail pixels (~±102 nA) blow Gwyddion's linear
             # min->max color range, crushing the real 0.5-1 nA signal to
             # black (operator 2026-07-15).  The .gsf is the VIEW copy:
@@ -2918,15 +3564,28 @@ class Widget(QWidget):
             n_clip = int((amp_img != gsf_img).sum())
             # Gwyddion Simple Field: physical units embedded (meters + amps),
             # so it opens at the true nm scale.
-            self.save_gsf(base + ".gsf", gsf_img, scan_m, scan_m,
-                          xy_units="m", z_units="A",
-                          title=f"Superscan {stats['mode_label']}")
+            # Physical axes follow the overlap crop, not the commanded field.
+            self.save_gsf(base + ".gsf", gsf_img,
+                          span_x_nm * 1e-9, span_y_nm * 1e-9,
+                          xy_units="m", z_units=z_units,
+                          title=f"Superscan {stats['mode_label']} "
+                                f"[{chan_lbl}]")
+            oy0, _oy1, ox0, _ox1 = stats.get(
+                "crop_px", (0, hi.shape[0], 0, hi.shape[1]))
+            wt = stats.get("weight")
             np.savez_compressed(
                 base + ".npz", image=hi, current_A=amp_img,
+                channel=chan_lbl, z_units=z_units,
                 shifts=np.array(stats["shifts"]),
                 scan_size_nm=scan_nm, nm_per_pixel=nm_per_px,
-                x_offset_nm=float(self._cs_xofs.value()),
-                y_offset_nm=float(self._cs_yofs.value()),
+                span_x_nm=span_x_nm, span_y_nm=span_y_nm,
+                x_offset_nm=float(self._cs_xofs.value()) + ox0 * nm_per_px,
+                y_offset_nm=float(self._cs_yofs.value()) + oy0 * nm_per_px,
+                crop_px=np.array(stats.get("crop_px",
+                                           (0, hi.shape[0], 0, hi.shape[1]))),
+                full_shape=np.array(stats.get("full_shape", hi.shape)),
+                weight=(wt.astype(np.float32) if wt is not None
+                        else np.zeros((0, 0), np.float32)),
                 clip_range_A=np.array([lo_c, hi_c]),
                 mode=stats["mode"], up=stats["up"])
             self._cs_status_lbl.setText(
@@ -2989,6 +3648,9 @@ class Widget(QWidget):
             "ki": sc.ki,
             # firmware derives samples/pixel; clamps to >=1 (see updateStepSizes)
             "derived_samples_per_pixel": max(spp, 1),
+            # LRPT passes averaged per emitted line (1 = single pass);
+            # effective line rate = line_rate_hz / line_repeat
+            "line_repeat": sc.line_repeat,
             "bias_dac": self.ui.spnBias.value(),
             "bias_V": stm_control.STM_Status.dac_to_bias_volts(
                 self.ui.spnBias.value()),

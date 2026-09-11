@@ -1,4 +1,5 @@
 from PySide6 import QtWidgets, QtCore
+import numpy as np
 import pyqtgraph as pg
 import pyqtgraph.exporters
 from math import log10
@@ -42,6 +43,9 @@ class PlotFrame(QtWidgets.QWidget):
         self.marker = None
         self.marker_text = None
         self._extra_curves = {}
+        self.region = None
+        self.region_plot = None
+        self.region_curve = None
 
     # --------------------------
     # Line Plot
@@ -199,6 +203,60 @@ class PlotFrame(QtWidgets.QWidget):
         if self.marker_text is not None:
             self.marker_text.setText("")
 
+    def add_x_region_selector(self):
+        """Add a slim overview strip under the main plot with a draggable
+        left/right region (like the histogram level handles on the image
+        tabs).  Dragging either edge, or sliding the whole band, sets the
+        main plot's visible X range; the strip always shows the full curve.
+
+        Call after add_plot() / set_log_mode().  update_plot() feeds the
+        strip and resets the region to the full data span on new data."""
+        if self.plot_item is None:
+            return
+
+        self.graphics.nextRow()
+        self.region_plot = self.graphics.addPlot()
+        self.region_plot.setMaximumHeight(60)
+        self.region_plot.hideAxis('left')
+        self.region_plot.setMouseEnabled(x=False, y=False)
+        self.region_plot.getAxis('bottom').enableAutoSIPrefix(False)
+        self.region_curve = self.region_plot.plot(
+            [], [], pen=pg.mkPen((150, 150, 150), width=1))
+        if getattr(self, "_log_x", False) or getattr(self, "_log_y", False):
+            self.region_plot.setLogMode(x=self._log_x, y=self._log_y)
+
+        # Region coords live in view space, i.e. log10 units on a log-x
+        # plot — the same space setXRange() expects, so no conversion.
+        self.region = pg.LinearRegionItem(movable=True)
+        self.region.setZValue(10)
+        self.region_plot.addItem(self.region, ignoreBounds=True)
+        self.region.sigRegionChanged.connect(self._region_changed)
+
+        # Rescale Y to just the selected band, so narrowing the region
+        # actually magnifies the features inside it.
+        self.plot_item.setAutoVisible(y=True)
+
+    def _region_changed(self):
+        if self.region is None or self.plot_item is None:
+            return
+        lo, hi = self.region.getRegion()
+        if hi > lo:
+            self.plot_item.setXRange(lo, hi, padding=0)
+
+    def _reset_region(self, x_data):
+        """Feed the overview strip and open the region to the full span of
+        the new data (view coords, so log10 on a log-x axis)."""
+        xs = [x for x in x_data
+              if x > 0 or not getattr(self, "_log_x", False)]
+        if len(xs) < 2:
+            self.region_curve.setData([], [])
+            return
+        lo, hi = min(xs), max(xs)
+        if getattr(self, "_log_x", False):
+            lo, hi = log10(lo), log10(hi)
+        self.region.setBounds([lo, hi])
+        self.region.setRegion([lo, hi])
+
     def add_extra_curve(self, name, pen=None, label=None):
         """Add an additional named line to the current plot_item, alongside
         the primary curve managed by update_plot() (e.g. reference/guide
@@ -223,6 +281,12 @@ class PlotFrame(QtWidgets.QWidget):
     def add_image(self, image, label = None):
 
         self.plot_item = self.graphics.addPlot()
+        # Square pixels: without this the view stretches the image to the
+        # widget's shape, so a 128x128 square scan rendered ~4:1 wide in
+        # the superscan popup while the live raster (which locks aspect)
+        # stayed square (operator 2026-07-31).  STM frames are square in
+        # BOTH pixels and nm, so 1:1 is always correct here.
+        self.plot_item.setAspectLocked(True)
 
         self.image_item = pg.ImageItem(image)
 
@@ -270,6 +334,52 @@ class PlotFrame(QtWidgets.QWidget):
         self.levelsChanged.emit(low, high)
 
     # --------------------------
+    # Robust vertical range (opt-in)
+    # --------------------------
+
+    def set_robust_y(self, lo_pct=1.0, hi_pct=99.0, ylabel="amp"):
+        """Clip the y-axis to [lo_pct, hi_pct] percentiles of each update
+        instead of pyqtgraph's min→max auto-range.  Rail/saturation
+        excursions otherwise own the scale and flatten the real signal
+        into a solid block (the Continuous Scan 'Current (live)' plot,
+        bench 2026-07-31).  The axis label gains a '(clipped)' suffix
+        whenever samples fall outside the shown range."""
+        self._robust_y = (float(lo_pct), float(hi_pct))
+        self._robust_ylabel = ylabel
+        if self.plot_item is not None:
+            self.plot_item.enableAutoRange(x=True, y=False)
+
+    def _apply_robust_y(self, y_data):
+        rb = getattr(self, "_robust_y", None)
+        if rb is None or self.plot_item is None:
+            return
+        y = np.asarray(y_data, float)
+        y = y[np.isfinite(y)]
+        if y.size < 2:
+            return
+        # IQR outlier fence, not bare percentiles: the bench current
+        # stream rails 5-26% of samples, so a 1-99% window still lands ON
+        # the rail.  The quartile core is immune up to ~25% outliers.
+        q25, q75 = np.percentile(y, (25.0, 75.0))
+        iqr = q75 - q25
+        if iqr > 0:
+            lo = max(float(y.min()), q25 - 3.0 * iqr)
+            hi = min(float(y.max()), q75 + 3.0 * iqr)
+        else:                              # degenerate: fall back to args
+            lo, hi = np.percentile(y, rb)
+        if hi <= lo:                       # flat trace: give it breathing room
+            lo, hi = lo - 1.0, hi + 1.0
+        pad = 0.08 * (hi - lo)
+        self.plot_item.setYRange(lo - pad, hi + pad, padding=0)
+        # Suffix only for MEANINGFUL clipping (>1% of samples), not the
+        # statistical tail every gaussian trace has.
+        frac_out = float(((y < lo) | (y > hi)).mean())
+        lbl = self._robust_ylabel + (" (clipped)" if frac_out > 0.01 else "")
+        if lbl != getattr(self, "_robust_lbl_last", None):
+            self._robust_lbl_last = lbl
+            self.plot_item.setLabel('left', lbl)
+
+    # --------------------------
     # Update Line Plot
     # --------------------------
 
@@ -277,6 +387,11 @@ class PlotFrame(QtWidgets.QWidget):
 
         if self.curve is not None:
             self.curve.setData(x_data, y_data)
+            self._apply_robust_y(y_data)
+
+        if self.region is not None:
+            self.region_curve.setData(x_data, y_data)
+            self._reset_region(x_data)
 
     # --------------------------
     # Update Image

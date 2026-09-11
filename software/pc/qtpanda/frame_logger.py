@@ -29,6 +29,7 @@ import time
 
 import numpy as np
 
+import data_paths
 import session_journal
 
 _REC_HEAD = struct.Struct('<BdHH')   # magic, pc_time, line_number, pixels
@@ -36,7 +37,8 @@ _MAGIC = 0x46                        # 'F'
 
 
 class FrameLogger:
-    def __init__(self, log_dir="scans"):
+    def __init__(self, log_dir=None):
+        # None -> today's data_paths folder, resolved at each start()
         self.log_dir = log_dir
         self._f = None
         self.base_path = None
@@ -52,8 +54,11 @@ class FrameLogger:
         of everything needed for faithful replay (geometry, feedback, bias,
         calibration...).  Closes any prior run first."""
         self.stop()
-        os.makedirs(self.log_dir, exist_ok=True)
-        base = os.path.join(self.log_dir, f"scan_{int(time.time() * 1000)}")
+        log_dir = self.log_dir or data_paths.day_dir()
+        os.makedirs(log_dir, exist_ok=True)
+        base = os.path.join(
+            log_dir,
+            f"scan_{int(time.time() * 1000)}{session_journal.tag()}")
         self.base_path = base
         self._f = open(base + ".frames", "ab")
         self.n_frames = 0
@@ -62,6 +67,7 @@ class FrameLogger:
         self._wrap = None
         self._sidecar = {
             "t_start": time.time(),
+            "session": session_journal.session_id(),
             "settings": settings or {},
             "format": "F:<BdHH then z:int32[pixels] then err:int32[pixels], "
                       "little-endian",
@@ -121,21 +127,23 @@ class FrameLogger:
         self._f.flush()               # a crash loses at most one frame
         self.n_frames += 1
 
-        # Drop accounting.  The firmware wraps its line counter at the line
-        # count; infer the wrap from the largest line number seen + 1 once a
-        # wrap occurs, and count any forward jump as dropped lines.
-        if self._last_line is not None:
-            if line_number > self._last_line:
-                gap = line_number - self._last_line - 1
-            elif self._wrap:
-                gap = (line_number - self._last_line - 1) % self._wrap
-            else:
-                gap = 0               # first wrap with unknown modulus
+        # Drop accounting.  The firmware wraps its line counter at
+        # pixelsPerLine, which equals this record's pixel count — no
+        # inference needed.  A geometry change (pixel count changes) or a
+        # scan restart (counter reset to 0 from far away) starts a fresh
+        # stream instead of being counted: the old inferred-wrap scheme
+        # booked ~448 phantom drops per sweep after a 512→64 px change
+        # (67,129 "dropped" lines on 2026-07-31 were this artifact).
+        if self._wrap != n:
+            if self._wrap is not None:
+                self._last_line = None    # geometry changed: new stream
+            self._wrap = n
+        if self._last_line is not None and self._wrap:
+            gap = (line_number - self._last_line - 1) % self._wrap
+            if line_number == 0 and gap > self._wrap // 2:
+                gap = 0                   # counter reset (RUN), not drops
             if gap:
                 self.n_dropped += gap
-        if self._wrap is None and self._last_line is not None \
-                and line_number < self._last_line:
-            self._wrap = self._last_line + 1
         self._last_line = line_number
 
 

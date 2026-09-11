@@ -23,6 +23,7 @@ import time
 
 import numpy as np
 
+import data_paths
 import session_journal
 from serial_reader import RAW_DTYPE
 
@@ -31,7 +32,8 @@ _MAGIC = 0x52
 
 
 class RawLogger:
-    def __init__(self, log_dir="raw"):
+    def __init__(self, log_dir=None):
+        # None -> today's data_paths folder, resolved at each start()
         self.log_dir = log_dir
         self._f = None
         self.base_path = None
@@ -44,8 +46,11 @@ class RawLogger:
 
     def start(self, meta=None):
         self.stop()
-        os.makedirs(self.log_dir, exist_ok=True)
-        base = os.path.join(self.log_dir, f"raw_{int(time.time() * 1000)}")
+        log_dir = self.log_dir or data_paths.day_dir()
+        os.makedirs(log_dir, exist_ok=True)
+        base = os.path.join(
+            log_dir,
+            f"raw_{int(time.time() * 1000)}{session_journal.tag()}")
         self.base_path = base
         self._f = open(base + ".raw", "ab")
         self.n_blocks = 0
@@ -55,6 +60,7 @@ class RawLogger:
         self._last_seq = None
         self._sidecar = {
             "t_start": time.time(),
+            "session": session_journal.session_id(),
             "meta": meta or {},
             "sample_layout": "big-endian interleaved (adc i16, z i32, err i32)",
         }
