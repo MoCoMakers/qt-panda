@@ -1,7 +1,7 @@
 import serial
 
 import numpy as np
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from collections import deque
 import os
 import time
@@ -311,6 +311,28 @@ class STM(object):
             # just double the volume with no added information.
             if not cmd.strip().upper().startswith("GSTS"):
                 session_journal.log_command(cmd, src=src)
+            self._track_xy(cmd)
+
+    def _track_xy(self, cmd):
+        # Pushed 'S' frames carry no X/Y, and while STRM owns the port (i.e.
+        # whenever it's open) GSTS never runs to refresh them — so status
+        # dac_x/dac_y froze at the port-open value and the one-state mirrors
+        # snapped the DACX spin back to it (bench 2026-09-24).  Outside a
+        # continuous scan the firmware's reported dac_x/dac_y is exactly the
+        # last DACX/DACY written (RSET centers both), so track it here.
+        parts = cmd.split()
+        if not parts or not hasattr(self, "status"):
+            return
+        op = parts[0].upper()
+        if op == "RSET":
+            self.status = replace(self.status, dac_x=32768, dac_y=32768)
+        elif op in ("DACX", "DACY") and len(parts) == 2:
+            try:
+                v = int(parts[1])
+            except ValueError:
+                return
+            key = "dac_x" if op == "DACX" else "dac_y"
+            self.status = replace(self.status, **{key: v})
 
     def move_motor(self, steps):
         self.send_cmd(f'MTMV {steps}')

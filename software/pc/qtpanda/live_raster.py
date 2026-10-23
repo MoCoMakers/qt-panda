@@ -7,12 +7,13 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton
 )
-from PySide6.QtCore import Slot, Signal, QSettings
+from PySide6.QtCore import Slot, Signal
 import pyqtgraph as pg
 import tifffile
 
 import data_paths
 import session_journal
+import settings_store
 
 
 ROW_ALIGN_METHODS = ("Median of diffs", "Median", "Poly deg 5")
@@ -174,7 +175,7 @@ class LiveRaster(QWidget):
         self._xo_nm        = 0.0
         self._yo_nm        = 0.0
 
-        self._settings = QSettings("qt-panda", "dans-port")
+        self._settings = settings_store.settings()
 
         self._z_trace   = np.zeros((self._H, self._half), dtype=np.float32)
         self._z_retrace = np.zeros((self._H, self._half), dtype=np.float32)

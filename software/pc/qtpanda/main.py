@@ -28,7 +28,7 @@ import threading
 import pyqtgraph as pg
 import STMBoxWidget
 import GridSpectroWorker
-from PySide6.QtCore import Slot, QTimer, QSettings, Qt
+from PySide6.QtCore import Slot, QTimer, Qt
 from PySide6.QtWidgets import (QApplication,  QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QSizePolicy,
     QSpacerItem, QSpinBox, QTabWidget, QVBoxLayout,
@@ -36,6 +36,7 @@ from PySide6.QtWidgets import (QApplication,  QHBoxLayout,
     QComboBox, QProgressBar, QGridLayout, QSlider)
 import serial.tools.list_ports
 import calibration
+import settings_store
 from ui_form import Ui_Widget
 import os
 import logging
@@ -293,7 +294,7 @@ class Widget(QWidget):
         # ----------------------
         # Shared state: calibration model + persistent settings
         # ----------------------
-        self._settings = QSettings("qt-panda", "dans-port")
+        self._settings = settings_store.settings()
         self._cal = calibration.Calibration.from_json()
         self._cal.changed.connect(self._on_calibration_changed)
 
@@ -2886,7 +2887,10 @@ class Widget(QWidget):
         # sample/px, so above that the firmware clamps and the true rate
         # saturates.  Recomputed when pixels/line or calibration changes.
         self._cs_linerate.setDecimals(2)
-        self._cs_linerate.setValue(30.0)
+        # 10 Hz default (2026-10-01, Sep-24 streak diagnosis): at 30 Hz the
+        # CC loop lagged ~150 px behind every step and the lag tails became
+        # horizontal streaks; 10 Hz cuts the tail length ~3×.
+        self._cs_linerate.setValue(10.0)
         self._cs_linerate.setSuffix(" Hz")
         geo_form.addRow("Line rate:", self._cs_linerate)
         # Realized rate ≠ requested: auto samples/px floors, so e.g. a
@@ -2972,10 +2976,11 @@ class Widget(QWidget):
         self._cs_setpoint = QDoubleSpinBox()
         self._cs_setpoint.setRange(0.0, 100000.0)
         self._cs_setpoint.setDecimals(1)
-        # 1000 pA = 1 nA — a realistic STM setpoint (Dan's default ≈ 1 nA).
-        # Sub-nA values round to 0 LSB at a 100 MΩ preamp and would trip
-        # the firmware's "ENGA refused: no setpoint" safety check.
-        self._cs_setpoint.setValue(1000.0)
+        # 500 pA default (2026-10-01; was 1 nA): ln(32767/160) = 5.3 ln of
+        # error headroom before the ADC rails vs 4.6 at 1 nA, so Z retracts
+        # ~15% faster up a step.  Keep ≥ ~100 pA: tiny values round to
+        # 0 LSB at a 100 MΩ preamp and trip "ENGA refused: no setpoint".
+        self._cs_setpoint.setValue(500.0)
         self._cs_setpoint.setSuffix(" pA")
         fb_form.addRow("Setpoint:", self._cs_setpoint)
         # ONE setpoint, two views (operator question 2026-07-31): CCON and
@@ -2993,10 +2998,18 @@ class Widget(QWidget):
         self._cs_kp.setValue(0.0)
         fb_form.addRow("Kp:", self._cs_kp)
 
+        # KIGA integrates once per ISR tick, so the same Ki is N× the loop
+        # gain at N× the tick rate; the default is scaled so the loop gain
+        # is rate-independent.  Raised 2026-10-01 from 4.5776@25 kHz
+        # (1.1444@100 kHz, ~18 Hz crossover) to 16.0@25 kHz = 4.0@100 kHz,
+        # ~60 Hz crossover — still under the ~100–300 Hz Z resonance bump
+        # (Sep-24 streak diagnosis).  Not yet bench-validated: sweep
+        # 2→4→6→8 on a known area and back off if a ~200 Hz ring appears.
+        isr_hz = float(getattr(self._cal, "control_rate_hz", 25000.0))
         self._cs_ki = QDoubleSpinBox()
         self._cs_ki.setRange(0.0, 1e6)
         self._cs_ki.setDecimals(4)
-        self._cs_ki.setValue(4.5776)
+        self._cs_ki.setValue(round(16.0 * 25000.0 / isr_hz, 4))
         fb_form.addRow("Ki:", self._cs_ki)
 
         # Slow anti-drift Z servo for constant-height mode (~0.1 Hz

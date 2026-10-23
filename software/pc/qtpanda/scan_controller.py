@@ -43,7 +43,7 @@ class ScanController(QObject):
         # Last commanded values, in physical units (source of truth for UI).
         self.scan_size_nm    = 160.0   # ~100000 LSB at default calibration
         self.pixels_per_line = 512
-        self.line_rate_hz    = 30.0
+        self.line_rate_hz    = 10.0
         self.xo_nm           = 0.0
         self.yo_nm           = 0.0
         self.setpoint_pa     = 1.0
