@@ -21,3 +21,8 @@ raw/
 *.frames
 *.scst
 *.raw
+
+# Per-bench GUI settings (was the Windows registry until 2026-09-18).
+# Machine state: COM port, DAC parking point, display prefs. Not source.
+software/pc/qtpanda/qtpanda.ini
+software/pc/qtpanda/qtpanda-settings-backup.reg

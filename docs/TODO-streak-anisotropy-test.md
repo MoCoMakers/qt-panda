@@ -1,6 +1,8 @@
 # TODO — streak anisotropy test: temporal vs spatial (preamp discriminator)
 
 Status: **proposed, not yet run** (concept note, 2026-07-27)
+See also: [meetings/2026-10-streak-followup-plan.md](meetings/2026-10-streak-followup-plan.md),
+the 2026-10 bench plan (KIGA and line-rate sweeps, code review fixes).
 Context: single-row horizontal streaks/blobs in open-loop constant-height
 scans (canonical example: `TeamUpdate/data/2026-Jul-16/scan_1784247518574.frames`,
 sweeps #38▲/#39▼, 1 nm view, 20.45 ms/line). Question: are the streaks

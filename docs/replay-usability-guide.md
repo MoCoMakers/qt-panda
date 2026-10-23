@@ -27,7 +27,7 @@ were our #1 source of confusion this session).
 
 **A/B panes** — two sweeps side by side, viridis colormap, one shared
 scale (the histogram on the right drives both, so brightness differences
-are real). Labels show sweep #, direction ▲▼, completion timestamps,
+are real). Labels show sweep #, direction ▲▼ (▲ = scan up, Y rising; ▼ = scan down; see [software-usage/01-scan-data-streams.md](software-usage/01-scan-data-streams.md)), completion timestamps,
 **~nm across** (the calibrated red-box size at capture time — suspected,
 not verified), partial status, session id, and source file. Partial
 sweeps render missing lines at the floor color.

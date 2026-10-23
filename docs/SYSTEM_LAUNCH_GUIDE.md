@@ -19,6 +19,7 @@ Click on any step below to jump to the detailed instructions:
 ## Prerequisites
 
 - STM controller hardware powered on and connected
+- **Power order:** turn on the analog supply (±15 V) first, wait ~5 s, *then* plug in the Teensy USB. Otherwise the DACs end up unconfigured and bias/X/Y/Z silently do nothing. See [DAC Boot-Order Failure](DAC_BOOT_ORDER.md)
 - USB-to-serial adapter connected (if required)
 - PC GUI application (`stm_app.py`) ready to run
 - Multimeter or voltmeter for voltage verification (optional but recommended)
@@ -61,7 +62,7 @@ Click on any step below to jump to the detailed instructions:
 
 **Procedure:**
 1. With the COM port connected, locate the **Reset** button in the Connection Control section
-2. Click **Reset** to initialize the STM controller to a default state
+2. Click **Reset** to initialize the STM controller to a default state. This also sets up the DACs, which is what fixes a dead bias if the Teensy booted before the analog supply ([DAC Boot-Order Failure](DAC_BOOT_ORDER.md))
 3. Wait a few seconds for the reset to complete
 4. Observe the **Real-Time Current Plot** (top left plot in the GUI)
 5. Check the current values displayed
@@ -170,6 +171,7 @@ For DAC = 45000 (further reduced):
   - Verify the voltage reference on the controller board
   - Check for loose connections
 - **If voltage is zero**: 
+  - **Most likely cause: DACs not configured (boot order).** The GUI shows the bias as set, but nothing reaches the output. Click **Reset** with the analog supply on, then set the bias again. See [DAC Boot-Order Failure](DAC_BOOT_ORDER.md)
   - Verify the Bias command was sent successfully
   - Check status display to confirm bias DAC value matches your input
   - Check for short circuits or disconnected outputs
