@@ -24,7 +24,14 @@ Layout:
   * Shared display levels (2–98 percentile of A) so A/B compare honestly.
     Missing lines in partial sweeps render at the low level and the label
     says PARTIAL n/H.
+  * "sweeps" filter: both directions, ▲ up only, or ▼ down only.  Up and
+    down sweeps of a continuous scan sit slightly offset, so mixing them
+    makes playback and GIFs jitter.  The filter hides the other
+    direction's timeline dots and every navigation path honors it: step,
+    play, timeline click/drag, the B offset (counted in visible sweeps)
+    and GIF A → B.
 """
+import bisect
 import os
 import sys
 import json
@@ -59,6 +66,9 @@ REGION_BRUSH = {"session":   (255, 255, 255, 18),
 EVENT_PENS = {"note": (240, 220, 60), "setting": (220, 80, 220),
               "milestone": (90, 255, 90), "crash": (255, 60, 60)}
 CHANNELS = ["e_trace", "e_retrace", "z_trace", "z_retrace"]
+# (combo label, sweep "dir" to keep; None keeps both)
+DIR_FILTERS = [("both directions", None), ("▲ up only", "up"),
+               ("▼ down only", "down")]
 
 
 def _fmt(ts):
@@ -154,6 +164,8 @@ class Player(QtWidgets.QWidget):
         self.b = min(1, len(data.sweeps) - 1)
         self._bks = (data.timeline or {}).get("brackets", [])
         self._hidden_levels = set()
+        self._dir_keep = None                 # None = both directions
+        self._vis = list(range(len(data.sweeps)))   # navigable sweeps
         gen = (data.timeline or {}).get("generated")
         stamp = (time.strftime(" · timeline %H:%M:%S", time.localtime(gen))
                  if gen else " · no timeline doc")
@@ -217,6 +229,15 @@ class Player(QtWidgets.QWidget):
         self.cmb_chan = QtWidgets.QComboBox()
         self.cmb_chan.addItems(CHANNELS)
         bar.addWidget(self.cmb_chan)
+        bar.addWidget(QtWidgets.QLabel("sweeps"))
+        self.cmb_dir = QtWidgets.QComboBox()
+        self.cmb_dir.addItems([lbl for lbl, _ in DIR_FILTERS])
+        self.cmb_dir.setToolTip(
+            "Show one scan direction only.  Up and down sweeps sit slightly "
+            "offset, so mixing them makes playback and GIF A → B jitter. "
+            "Step, play, timeline seek, the B offset and the GIF all skip "
+            "the hidden direction; its timeline dots are hidden too.")
+        bar.addWidget(self.cmb_dir)
         self.chk_auto = QtWidgets.QCheckBox("auto levels")
         self.chk_auto.setChecked(True)
         self.chk_auto.setToolTip(
@@ -314,10 +335,11 @@ class Player(QtWidgets.QWidget):
         self.timer.setSingleShot(True)
         self.timer.timeout.connect(self._tick)
         self.btn_play.clicked.connect(self._toggle_play)
-        self.btn_prev.clicked.connect(lambda: self.seek(self.a - 1))
-        self.btn_next.clicked.connect(lambda: self.seek(self.a + 1))
+        self.btn_prev.clicked.connect(lambda: self._step(-1))
+        self.btn_next.clicked.connect(lambda: self._step(1))
         self.cmb_chan.currentIndexChanged.connect(lambda _:
                                                   self.seek(self.a))
+        self.cmb_dir.currentIndexChanged.connect(self._set_dir_filter)
         self.spin_off.valueChanged.connect(lambda _: self.seek(self.a))
         self.chk_lock.toggled.connect(lambda _: self.seek(self.a))
         self.chk_raw_markers.toggled.connect(
@@ -369,10 +391,11 @@ class Player(QtWidgets.QWidget):
                                                   style=QtCore.Qt.DashLine))
                 ln.setToolTip(f"{_fmt(t)} {typ}: {txt}")
                 self.tl.addItem(ln)
+        shown = [self.data.sweeps[i] for i in self._vis]
         full = [(s[2]["t_end"], 1 if s[2]["dir"] == "up" else -1)
-                for s in self.data.sweeps if not s[2]["partial"]]
+                for s in shown if not s[2]["partial"]]
         part = [(s[2]["t_end"], 1 if s[2]["dir"] == "up" else -1)
-                for s in self.data.sweeps if s[2]["partial"]]
+                for s in shown if s[2]["partial"]]
         if full:
             self.tl.plot([t for t, _ in full], [y for _, y in full],
                          pen=None, symbol="o", symbolSize=4,
@@ -493,13 +516,50 @@ class Player(QtWidgets.QWidget):
         self.br.addItem(self.br_cur_b)
 
     # -- behavior ------------------------------------------------------------
+    def _pos(self, i):
+        """Position in the navigable list of sweep i, or of the nearest
+        navigable sweep at/after it when i itself is filtered out."""
+        return min(bisect.bisect_left(self._vis, i), len(self._vis) - 1)
+
+    def _snap(self, i):
+        """Nearest navigable sweep index to sweep i (by completion time)."""
+        return self._nearest(self.data.sweeps[
+            max(0, min(len(self.data.sweeps) - 1, i))][2]["t_end"])
+
+    def _step(self, delta):
+        if self._vis:
+            p = self._pos(self.a)
+            self.seek(self._vis[max(0, min(len(self._vis) - 1, p + delta))])
+
+    def _set_dir_filter(self, k):
+        self._dir_keep = DIR_FILTERS[k][1]
+        self._vis = [i for i, (_fp, _idx, s) in enumerate(self.data.sweeps)
+                     if self._dir_keep is None or s["dir"] == self._dir_keep]
+        if not self._vis:            # e.g. a file with no down sweeps
+            QtWidgets.QMessageBox.information(
+                self, "sweeps", f"No {DIR_FILTERS[k][0]} sweeps here — "
+                "showing both directions.")
+            self.cmb_dir.setCurrentIndex(0)   # re-enters with k=0
+            return
+        self._draw_timeline()
+        self.seek(self._snap(self.a))
+
     def seek(self, i):
         n = len(self.data.sweeps)
-        if n == 0:
+        if n == 0 or not self._vis:
             return
-        self.a = max(0, min(n - 1, i))
+        i = max(0, min(n - 1, i))
+        if self._dir_keep and self.data.sweeps[i][2]["dir"] != self._dir_keep:
+            i = self._snap(i)
+        self.a = i
         if self.chk_lock.isChecked():
-            self.b = max(0, min(n - 1, self.a + self.spin_off.value()))
+            # Offset counts navigable sweeps, so "+1" under "▲ up only"
+            # means the next up sweep, not the down sweep in between.
+            p = self._pos(self.a) + self.spin_off.value()
+            self.b = self._vis[max(0, min(len(self._vis) - 1, p))]
+        elif (self._dir_keep
+              and self.data.sweeps[self.b][2]["dir"] != self._dir_keep):
+            self.b = self._snap(self.b)      # parked B obeys the filter too
         chan = self.cmb_chan.currentText()
         img_a, _, sa = self.data.image(self.a, chan)
         img_b, _, sb = self.data.image(self.b, chan)
@@ -607,24 +667,29 @@ class Player(QtWidgets.QWidget):
         levels and colormap; asks for a frame rate, then a save path."""
         from PIL import Image
         i0, i1 = self.a, self.b
-        step = 1 if i1 >= i0 else -1
-        idxs = list(range(i0, i1 + step, step))
+        lo, hi = min(i0, i1), max(i0, i1)
+        # Only the sweeps the direction filter shows ("▲ up only" etc.)
+        idxs = [i for i in self._vis if lo <= i <= hi]
+        if i1 < i0:
+            idxs.reverse()
         n = len(idxs)
         if n < 2:
             QtWidgets.QMessageBox.information(
-                self, "GIF A → B", "A and B are the same sweep — move one "
-                "playhead first.")
+                self, "GIF A → B", "Fewer than two visible sweeps between A "
+                "and B — move one playhead first.")
             return
+        dir_lbl, dir_keep = DIR_FILTERS[self.cmb_dir.currentIndex()]
         fps, ok = QtWidgets.QInputDialog.getDouble(
             self, "GIF A → B",
-            f"{n} frames (sweep #{i0} → #{i1}, "
+            f"{n} frames (sweep #{i0} → #{i1}, {dir_lbl}, "
             f"{self.cmb_chan.currentText()}, current levels/colormap)\n"
             "Frame rate (fps):", 10.0, 0.5, 60.0, 1)
         if not ok:
             return
         chan = self.cmb_chan.currentText()
+        tag = f"_{dir_keep}only" if dir_keep else ""
         default = os.path.join(self.data.folder,
-                               f"anim_sweep{i0}-{i1}_{chan}.gif")
+                               f"anim_sweep{i0}-{i1}{tag}_{chan}.gif")
         path, _f = QtWidgets.QFileDialog.getSaveFileName(
             self, "Save GIF", default, "GIF animation (*.gif)")
         if not path:
@@ -675,17 +740,17 @@ class Player(QtWidgets.QWidget):
     def _tick(self):
         if not self.playing:
             return
-        if self.a >= len(self.data.sweeps) - 1:
+        if self._pos(self.a) >= len(self._vis) - 1:
             self._toggle_play()
             return
         t_now = self.data.sweeps[self.a][2]["t_end"]
-        self.seek(self.a + 1)
+        self._step(1)
         t_next = self.data.sweeps[self.a][2]["t_end"]
         delay = (t_next - t_now) / max(self.spin_speed.value(), 0.01)
         self.timer.start(int(max(0.02, min(delay, 2.0)) * 1000))
 
     def _nearest(self, t):
-        return min(range(len(self.data.sweeps)),
+        return min(self._vis or range(len(self.data.sweeps)),
                    key=lambda i: abs(self.data.sweeps[i][2]["t_end"] - t))
 
     def _seek_time(self, t):
@@ -699,9 +764,11 @@ class Player(QtWidgets.QWidget):
     def _drag_b(self, line):
         i = self._nearest(line.value())
         if self.chk_lock.isChecked():
-            # B is locked to A: dragging B adjusts the offset instead.
-            if i - self.a != self.spin_off.value():
-                self.spin_off.setValue(i - self.a)   # triggers a refresh
+            # B is locked to A: dragging B adjusts the offset instead
+            # (counted in visible sweeps, matching seek()).
+            off = self._pos(i) - self._pos(self.a)
+            if off != self.spin_off.value():
+                self.spin_off.setValue(off)          # triggers a refresh
         elif i != self.b:
             self.b = i
             self.seek(self.a)
@@ -718,9 +785,9 @@ class Player(QtWidgets.QWidget):
         if ev.key() == QtCore.Qt.Key_Space:
             self._toggle_play()
         elif ev.key() == QtCore.Qt.Key_Left:
-            self.seek(self.a - 1)
+            self._step(-1)
         elif ev.key() == QtCore.Qt.Key_Right:
-            self.seek(self.a + 1)
+            self._step(1)
         else:
             super().keyPressEvent(ev)
 

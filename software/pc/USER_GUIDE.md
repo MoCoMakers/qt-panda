@@ -185,10 +185,13 @@ LSB uses the Calibration model.
 
 ### 5.3 Reading the live raster
 
-- **Four images, always live:** Z trace / Z retrace (top), error trace /
-  error retrace (bottom). A feature present in both trace *and* retrace
-  is real; one that flips or only appears one way is drift/creep/an
-  artifact.
+- **Trace images, live:** Z trace (top) and error trace (bottom). The
+  retrace twins are kept off-screen and saved with every frame; view them
+  in the sweep player (`z_retrace`, `e_retrace`). Scan up and scan down
+  are drawn into the same rows. A surface feature looks the same in trace
+  and retrace; a pattern that flips between them is feedback lag or
+  hysteresis. See `docs/software-usage/01-scan-data-streams.md` for the
+  four data streams and their names.
 - **Histograms:** drag the level region on the right of each row to clamp
   the colour range and bring out subtle features (auto-leveling washes
   them out). The retrace twin mirrors the trace's levels automatically.
