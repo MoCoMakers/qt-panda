@@ -36,7 +36,11 @@ sweeps render missing lines at the floor color.
 right-click the gradient for other colormaps. **auto levels** checkbox
 (transport bar): on = re-level 2–98 % of A every sweep (like the live
 raster); off = your manual levels hold while stepping/playing — use off
-for honest A-vs-B or GIF export.
+for honest A-vs-B or GIF export. **peaks bright** checkbox (default on,
+I-10): Z and error are shown negated so peaks are bright and valleys dark
+in every channel (stored Z and error both put a peak low); untick for the
+raw stored values. PNG/GIF exports follow the screen; TIFF/GSF exports are
+always raw.
 
 **Transport bar** — `◀ ▶play ▶|` (also **space** / **arrow keys**),
 speed 0.25–999× (type any value; adaptive click-steps), channel

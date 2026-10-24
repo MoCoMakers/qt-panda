@@ -60,6 +60,7 @@ import data_paths
 import raw_logger
 import status_logger
 import drift_hold
+import clip_guard
 import dac_restore
 import superscan
 from collections import deque
@@ -1497,6 +1498,33 @@ class Widget(QWidget):
             nm_min = lsb_min * self._cal.dac_x_v_per_lsb * nm_v
             self._cs_drift_lbl.setText(
                 f"drift: {lsb_min:+.0f} LSB/min ({nm_min:+.2f} nm/min)")
+
+    @Slot()
+    def _clip_guard_tick(self):
+        """Sustained-clip guard at fixed Z (F1): halt + retract only."""
+        if not self._cs_clip_guard.isChecked() or not self.stm.is_opened:
+            self._clip_guard.reset()
+            return
+        st = self.stm.status
+        hist = list(self.stm.history)[-300:]
+        dz = self._clip_guard.check(((h.time_millis, h.adc) for h in hist),
+                                    st.is_const_current, st.is_approaching)
+        if not dz:
+            return
+        if self._scan_ctrl.is_running():
+            self._on_cs_halt()
+        z = int(st.dac_z)
+        v = max(0, z + dz)
+        if v < z:
+            self.stm.send_cmd(f"DACZ {v}", src="auto")
+        msg = (f"CLIP GUARD: current clipped with feedback off; "
+               f"scan halted, Z {z} -> {v} (away)")
+        if v == z:
+            msg = ("CLIP GUARD: current clipped with feedback off and Z is "
+                   "already fully retracted: back off with the motor")
+        print(f"[ClipGuard] {msg}")
+        session_journal.note(msg, src="auto")
+        self._cs_status_lbl.setText(msg)
 
     @Slot(int)
     def _update_tab_info_btn(self, idx):
@@ -3026,6 +3054,19 @@ class Widget(QWidget):
         self._cs_drift_lbl = QLabel("drift: —")
         fb_form.addRow("", self._cs_drift_lbl)
 
+        # Sustained-clip guard (F1): with feedback off nothing else reacts
+        # when drift closes the gap (Oct 22 crash, parked at fixed Z).
+        self._cs_clip_guard = QCheckBox("Clip guard (fixed Z)")
+        self._cs_clip_guard.setChecked(True)
+        self._cs_clip_guard.setToolTip(
+            "While feedback is off (constant height or parked), if the "
+            "current sits at the ADC clip for most of a second: halt any "
+            "scan and step Z away from the sample by "
+            f"{clip_guard.DEFAULT_STEP} codes, once per second until it "
+            "clears.  Only ever retracts.  Stands down while CC/ENGA owns Z "
+            "or during approach.")
+        fb_form.addRow("", self._cs_clip_guard)
+
         fb_box.setMaximumWidth(215)
         top_row.addWidget(fb_box)
 
@@ -3237,6 +3278,10 @@ class Widget(QWidget):
         self._drift_timer = QTimer(self)
         self._drift_timer.timeout.connect(self._drift_hold_tick)
         self._drift_timer.start(500)
+        self._clip_guard = clip_guard.ClipGuard()
+        self._clip_timer = QTimer(self)
+        self._clip_timer.timeout.connect(self._clip_guard_tick)
+        self._clip_timer.start(250)
         self._scan_ctrl.runningChanged.connect(self._on_scan_running_changed)
         # Right-click-to-pan: raster → offset spinboxes → firmware
         self._cs_raster.scanOffsetRequested.connect(self._on_cs_offset_picked)
@@ -3291,7 +3336,12 @@ class Widget(QWidget):
             self._cs_raster.auto_range()
 
     @Slot()
-    def _on_cs_run(self):
+    def _on_cs_run(self, mode=None):
+        """RUN with an explicit scan mode (F1).  With feedback already on
+        this is a constant-current scan.  With feedback off the mode must be
+        chosen: 'cc' engages first (ENGA) and runs only if it took; 'ch'
+        runs at constant height on purpose.  The GUI asks; the copilot
+        passes mode."""
         if not self.stm.is_opened:
             self._cs_status_lbl.setText("Serial not open")
             return
@@ -3306,6 +3356,52 @@ class Widget(QWidget):
             print("[ContinuousScan] REFUSED: firmware speaks the old "
                   "protocol (STAT: prefix); RUN would be ignored.")
             return
+        if not self.stm.status.is_const_current:
+            if mode is None:
+                from PySide6.QtWidgets import QMessageBox
+                box = QMessageBox(self)
+                box.setWindowTitle("Choose scan mode")
+                box.setIcon(QMessageBox.Warning)
+                box.setText("Feedback (constant current) is OFF.\n\n"
+                            "Scanning with Z fixed crashed the tip on "
+                            "Oct 22. How should this scan run?")
+                b_cc = box.addButton("Engage feedback, then run",
+                                     QMessageBox.AcceptRole)
+                b_ch = box.addButton("Constant height on purpose",
+                                     QMessageBox.DestructiveRole)
+                box.addButton(QMessageBox.Cancel)
+                box.setDefaultButton(b_cc)
+                box.exec()
+                mode = {b_cc: "cc", b_ch: "ch"}.get(box.clickedButton())
+                if mode is None:
+                    self._cs_status_lbl.setText("RUN cancelled")
+                    return
+            if mode == "cc":
+                self._on_cs_apply_settings()          # SETP before ENGA
+                self._scan_ctrl.engage()
+                self._cs_status_lbl.setText("Engaging feedback…")
+                QtCore.QTimer.singleShot(400, self._cs_run_if_engaged)
+                return
+            if mode != "ch":
+                self._cs_status_lbl.setText(f"Unknown scan mode {mode!r}")
+                return
+            session_journal.note(
+                "RUN at constant height (fixed Z) chosen on purpose; "
+                "clip guard " + ("on" if self._cs_clip_guard.isChecked()
+                                 else "OFF"), src="auto")
+        self._cs_start_run()
+
+    @Slot()
+    def _cs_run_if_engaged(self):
+        if not self.stm.status.is_const_current:
+            msg = ("ENGA did not take (no setpoint, or refused): "
+                   "not running")
+            self._cs_status_lbl.setText(msg)
+            print(f"[ContinuousScan] {msg}")
+            return
+        self._cs_start_run()
+
+    def _cs_start_run(self):
         if self._stab_streaming:
             # Single-reader rule: hand the port from the recording's stream
             # reader to the scan reader (two readers race read() and corrupt

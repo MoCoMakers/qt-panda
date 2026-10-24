@@ -197,6 +197,15 @@ class LiveRaster(QWidget):
         self._lin_mode = False
         self._setlog = 0
 
+        # Display convention (I-10): peaks bright, valleys dark, in every
+        # panel.  Raw Z is higher = extended toward the sample (a peak is
+        # LOW Z) and raw error = setpoint - log(current) (a peak is LOW
+        # error), so both are shown negated.  The linearized-current view
+        # (constant height) already has peaks bright.  Display only: raw
+        # buffers, TIFF/frames saves are verbatim.
+        self._peaks_bright = (
+            self._settings.value("peaks_bright", "true") == "true")
+
         self._snap_win = None
 
         # Up/down sweep drift correction (display-time, pixels): descending-
@@ -221,12 +230,17 @@ class LiveRaster(QWidget):
     def _desc_text(self):
         err = ("Err: CURRENT, linearized (ADC counts)" if self._lin_mode
                else "Err: feedback error (log units)")
-        return (f"Z: topography   {err}   "
+        conv = ("peaks bright" if self._peaks_bright
+                else "RAW values (peaks dark)")
+        return (f"Z: topography   {err}   [{conv}]   "
                 "(forward trace; retrace kept in saved frames)")
+
+    def _z_display(self, arr):
+        return -arr if self._peaks_bright else arr
 
     def _e_display(self, arr):
         if not self._lin_mode:
-            return arr
+            return -arr if self._peaks_bright else arr
         return (np.exp((self._setlog - arr.astype(np.float64)) / self.LOG_K)
                 - 1.0).astype(np.float32)
 
@@ -278,6 +292,15 @@ class LiveRaster(QWidget):
         self._chk_rowalign.setChecked(
             self._settings.value("row_align_on", "false") == "true")
         bar.addWidget(self._chk_rowalign)
+        self._chk_peaks = QCheckBox("Peaks bright")
+        self._chk_peaks.setToolTip(
+            "Display convention: bright = peaks (surface closer to the "
+            "tip), dark = valleys, in Z and Err.  Untick to see raw values "
+            "(raw Z and raw feedback error both show peaks DARK).  Display "
+            "only; saved data is always raw.")
+        self._chk_peaks.setChecked(self._peaks_bright)
+        self._chk_peaks.toggled.connect(self._peaks_changed)
+        bar.addWidget(self._chk_peaks)
         self._cmb_rowalign = QComboBox()
         self._cmb_rowalign.addItems(ROW_ALIGN_METHODS)
         self._cmb_rowalign.setCurrentText(
@@ -512,7 +535,7 @@ class LiveRaster(QWidget):
                 or now - getattr(self, "_last_repaint", 0.0) > 0.1):
             self._last_repaint = now
             self._img_zt.setImage(self._z_disp(self._z_trace), autoLevels=False)
-            self._img_zr.setImage(self._z_retrace, autoLevels=False)
+            self._img_zr.setImage(self._z_display(self._z_retrace), autoLevels=False)
             self._img_et.setImage(self._e_disp(self._e_trace), autoLevels=False)
             self._img_er.setImage(self._e_display(self._e_retrace),
                                   autoLevels=False)
@@ -530,7 +553,7 @@ class LiveRaster(QWidget):
 
         # 1D Z-trace of the most recent line, x-axis in nm.
         x_nm = np.linspace(0.0, self._scan_size_nm, half)
-        self._curve.setData(x_nm, z_arr[:half])
+        self._curve.setData(x_nm, self._z_display(np.asarray(z_arr[:half], np.float32)))
 
     # -------------------------------------------------------------------------
     # Internal
@@ -574,12 +597,20 @@ class LiveRaster(QWidget):
             "row_align_method", self._cmb_rowalign.currentText())
         self._push_all_images(auto=True)
 
+    def _peaks_changed(self, on):
+        self._peaks_bright = bool(on)
+        self._settings.setValue("peaks_bright", "true" if on else "false")
+        self._lbl_desc.setText(self._desc_text())
+        self._push_all_images(auto=True)
+        self._do_autolevel()
+
     def row_align_params(self):
         """(enabled, method) — read by the superscan build in main.py."""
         return (self._chk_rowalign.isChecked(),
                 self._cmb_rowalign.currentText())
 
     def _z_disp(self, arr):
+        arr = self._z_display(arr)
         if self._chk_rowalign.isChecked():
             return _row_align(arr, self._cmb_rowalign.currentText())
         return arr
@@ -592,7 +623,7 @@ class LiveRaster(QWidget):
 
     def _push_all_images(self, auto: bool):
         self._img_zt.setImage(self._z_disp(self._z_trace), autoLevels=auto)
-        self._img_zr.setImage(self._z_retrace, autoLevels=auto)
+        self._img_zr.setImage(self._z_display(self._z_retrace), autoLevels=auto)
         self._img_et.setImage(self._e_disp(self._e_trace), autoLevels=auto)
         self._img_er.setImage(self._e_display(self._e_retrace), autoLevels=auto)
 

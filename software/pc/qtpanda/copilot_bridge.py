@@ -454,12 +454,24 @@ class CopilotBridge:
                         agent_click(w.ui.cmdStop)
                         return {"ok": True}
                     if path == "/scan/run":
-                        logger.info("[copilot] scan RUN")
+                        # F1: explicit mode when feedback is off.
+                        mode = body.get("mode")
+                        if (not w.stm.status.is_const_current
+                                and mode not in ("cc", "ch")):
+                            return {"ok": False, "error":
+                                    "feedback is off: pass mode 'cc' "
+                                    "(engage, then run) or 'ch' (constant "
+                                    "height on purpose)"}
+                        logger.info(f"[copilot] scan RUN mode={mode}")
                         w.stm.src_override = "agent"
                         try:
-                            w._on_cs_run()
+                            w._on_cs_run(mode)
                         finally:
                             w.stm.src_override = None
+                        if mode == "cc" and not w.stm.status.is_const_current:
+                            return {"ok": True, "pending": "engaging; "
+                                    "RUN follows in 0.4 s if ENGA takes",
+                                    "status": w._cs_status_lbl.text()}
                         return {"ok": w._scan_ctrl.is_running(),
                                 "status": w._cs_status_lbl.text(),
                                 "frames": w._frame_logger.status()}

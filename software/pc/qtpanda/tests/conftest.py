@@ -18,9 +18,12 @@ if _PKG not in sys.path:
 
 @pytest.fixture(scope="session")
 def qapp():
-    """A single QCoreApplication for QThread-based tests."""
-    from PySide6.QtCore import QCoreApplication
-    app = QCoreApplication.instance() or QCoreApplication([])
+    """A single headless QApplication (offscreen) for QThread-based tests AND the widget-level
+    equivalence tests: a plain QCoreApplication created first would make later widget tests
+    crash, since only one application object can exist per process."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication([])
     yield app
 
 

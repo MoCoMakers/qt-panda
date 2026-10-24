@@ -245,6 +245,18 @@ class Player(QtWidgets.QWidget):
             "live raster's autolevel.  Uncheck to hold your manual "
             "histogram levels while stepping/playing.")
         bar.addWidget(self.chk_auto)
+        # Display convention (I-10): peaks bright, valleys dark.  Stored Z
+        # (higher = toward the sample) and error (setpoint - log current)
+        # both put a peak LOW, so both are shown negated.  Display and
+        # PNG/GIF renders only; TIFF/GSF exports stay raw.
+        self.chk_peaks = QtWidgets.QCheckBox("peaks bright")
+        self.chk_peaks.setChecked(True)
+        self.chk_peaks.setToolTip(
+            "Bright = peaks (surface closer to the tip), dark = valleys, "
+            "for both Z and error.  Untick for raw stored values, where "
+            "peaks show dark.  TIFF/GSF exports are always raw.")
+        self.chk_peaks.toggled.connect(self._peaks_toggled)
+        bar.addWidget(self.chk_peaks)
         self.chk_lock = QtWidgets.QCheckBox("B follows A, offset")
         self.chk_lock.setChecked(True)
         bar.addWidget(self.chk_lock)
@@ -563,6 +575,7 @@ class Player(QtWidgets.QWidget):
         chan = self.cmb_chan.currentText()
         img_a, _, sa = self.data.image(self.a, chan)
         img_b, _, sb = self.data.image(self.b, chan)
+        img_a, img_b = self._disp(img_a), self._disp(img_b)
         lo, hi = np.nanpercentile(img_a, [2, 98])
         if not np.isfinite(lo) or hi <= lo:
             lo, hi = 0.0, 1.0
@@ -653,8 +666,21 @@ class Player(QtWidgets.QWidget):
             return note
         raise ValueError(f"unsupported file type: {ext}")
 
+    def _peaks_toggled(self, *_):
+        # Manual levels follow the sign flip so the picture keeps its
+        # contrast with auto levels off.
+        lo, hi = self.hist.getLevels()
+        self.hist.setLevels(-hi, -lo)
+        self.seek(self.a)
+
+    def _disp(self, img):
+        """Raw stored values -> display convention (peaks bright)."""
+        return -np.asarray(img) if self.chk_peaks.isChecked() else img
+
     def _render_rgb(self, data):
-        """uint8 RGB of an array at the screen's current levels + LUT."""
+        """uint8 RGB of an array (RAW values) at the screen's current
+        levels + LUT, in the same display convention as the screen."""
+        data = self._disp(data)
         lo, hi = self.hist.getLevels()
         span = (hi - lo) or 1.0
         arr = np.nan_to_num(np.asarray(data, np.float32), nan=lo)
