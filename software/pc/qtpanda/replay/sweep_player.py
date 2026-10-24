@@ -9,6 +9,7 @@ session journals).  No hardware, no COM port — built to work days later.
 
     python sweep_player.py 2026-Jul-15            # a day (name or path)
     python sweep_player.py path\\to\\scan_x.frames  # a single run
+    python sweep_player.py 2026-Oct-22 --stamped  # pre-v2 row placement (revert)
 
 Layout:
   * A/B panes side by side, each showing one completed sweep with its
@@ -89,6 +90,7 @@ class DayData:
                            for n in os.listdir(self.folder)
                            if n.endswith(".frames"))
         self._records = {}
+        self._lines = {}          # (frames_path, line_index) -> row indices
         self.sweeps = []          # (frames_path, index_meta, sweep_dict)
         for fp in files:
             idx = sweep_index.load_or_build(fp, height)
@@ -126,13 +128,24 @@ class DayData:
             self._records[fp] = sweep_index.load_frames(fp)
         return self._records[fp]
 
+    # Row placement (pipeline v2, D34/D39): "slip_corrected" (default) or
+    # "stamped" (the pre-v2 images, exact revert).  Sweep numbering is the same in both.
+    line_index = sweep_index.DEFAULT_LINE_INDEX
+
+    def lines(self, fp, idx):
+        key = (fp, self.line_index)
+        if key not in self._lines:
+            self._lines[key] = (None if self.line_index == "stamped" else
+                                sweep_index.line_indices_for(self.records(fp), idx, self.line_index))
+        return self._lines[key]
+
     def image(self, i, channel):
         fp, idx, s = self.sweeps[i]
         H = idx["image_height"]
         half = next(e["pixels_per_direction"] for e in idx["epochs"]
                     if e["epoch"] == s["epoch"])
         return sweep_index.sweep_image(self.records(fp), s, H, half or 1,
-                                       channel), idx, s
+                                       channel, self.lines(fp, idx)), idx, s
 
     def label(self, i):
         fp, idx, s = self.sweeps[i]
@@ -238,6 +251,21 @@ class Player(QtWidgets.QWidget):
             "Step, play, timeline seek, the B offset and the GIF all skip "
             "the hidden direction; its timeline dots are hidden too.")
         bar.addWidget(self.cmb_dir)
+        # Row placement (pipeline v2, D34/D39): FW <= 5.6 stamps each line
+        # one too high after the first Y cycle; "slip-corrected" puts rows
+        # where they were scanned.  "stamped" = the pre-v2 images exactly.
+        # Sweep numbers (#1808 ...) are identical in both.
+        bar.addWidget(QtWidgets.QLabel("rows"))
+        self.cmb_rows = QtWidgets.QComboBox()
+        self.cmb_rows.addItems(["slip-corrected", "stamped"])
+        self.cmb_rows.setCurrentIndex(0 if data.line_index == "slip_corrected" else 1)
+        self.cmb_rows.setToolTip(
+            "slip-corrected (default): firmware <= 5.6 numbers every line "
+            "one too high after the first Y cycle, so up/down pairs sit 2 "
+            "rows apart; this puts each row where it was scanned.  "
+            "stamped: the old images exactly (revert).  Change-log: "
+            "<recording>.corrections.json.  Sweep numbering is unchanged.")
+        bar.addWidget(self.cmb_rows)
         self.chk_auto = QtWidgets.QCheckBox("auto levels")
         self.chk_auto.setChecked(True)
         self.chk_auto.setToolTip(
@@ -352,6 +380,7 @@ class Player(QtWidgets.QWidget):
         self.cmb_chan.currentIndexChanged.connect(lambda _:
                                                   self.seek(self.a))
         self.cmb_dir.currentIndexChanged.connect(self._set_dir_filter)
+        self.cmb_rows.currentIndexChanged.connect(self._set_line_index)
         self.spin_off.valueChanged.connect(lambda _: self.seek(self.a))
         self.chk_lock.toggled.connect(lambda _: self.seek(self.a))
         self.chk_raw_markers.toggled.connect(
@@ -807,6 +836,10 @@ class Player(QtWidgets.QWidget):
         self._seek_time(
             self.br.getPlotItem().vb.mapSceneToView(ev.scenePos()).x())
 
+    def _set_line_index(self, k):
+        self.data.line_index = "slip_corrected" if k == 0 else "stamped"
+        self.seek(self.a)
+
     def keyPressEvent(self, ev):
         if ev.key() == QtCore.Qt.Key_Space:
             self._toggle_play()
@@ -826,6 +859,8 @@ def main():
     if "--height" in sys.argv:
         height = int(sys.argv[sys.argv.index("--height") + 1])
     data = DayData(target, height)
+    if "--stamped" in sys.argv:       # pre-v2 row placement (exact revert, D34)
+        data.line_index = "stamped"
     if not data.sweeps:
         raise SystemExit(f"no sweeps found under {target}")
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])

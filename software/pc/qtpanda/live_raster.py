@@ -14,53 +14,23 @@ import tifffile
 import data_paths
 import session_journal
 import settings_store
+import reconstruct
 
 
-ROW_ALIGN_METHODS = ("Median of diffs", "Median", "Poly deg 5")
+ROW_ALIGN_METHODS = reconstruct.ROW_ALIGN_METHODS
 
 
 def _row_align(arr, method):
     """Gwyddion-style per-row background removal (display/post only — raw
-    buffers and .frames stay verbatim).
-
-    Median          — subtract each row's median (kills row offsets AND any
-                      real slow-axis gradient).
-    Median of diffs — offset each row by the cumulative median of its
-                      point-wise difference to the previous row; robust to
-                      features crossing rows, preserves in-row structure.
-    Poly deg 5      — subtract a degree-5 polynomial fitted to each row
-                      (also flattens in-row bow/tilt).
-    """
-    a = np.asarray(arr, dtype=np.float64).copy()
-    if a.ndim != 2 or a.shape[0] < 2:
-        return arr
-    if method == "Median":
-        a -= np.median(a, axis=1, keepdims=True)
-    elif method == "Median of diffs":
-        d = np.median(np.diff(a, axis=0), axis=1)
-        # Accumulate only jumps that beat the in-row pixel noise: a plain
-        # cumsum random-walks on noise-dominated frames and paints a fake
-        # vertical ramp.  Expected noise of a median-of-W-diffs is
-        # ~1.253*sigma_pix*sqrt(2)/sqrt(W); gate at 5x that (a single
-        # false pass would step every row after it, so keep P tiny).
-        res = a - np.median(a, axis=1, keepdims=True)
-        sigma_pix = 1.4826 * np.median(np.abs(res))
-        gate = 5.0 * 1.253 * sigma_pix * np.sqrt(2.0 / a.shape[1])
-        d = np.where(np.abs(d) > gate, d, 0.0)
-        off = np.concatenate(([0.0], np.cumsum(d)))
-        a -= (off - off.mean())[:, None]
-    elif method == "Poly deg 5":
-        x = np.linspace(-1.0, 1.0, a.shape[1])
-        V = np.vander(x, 6)
-        coef, *_ = np.linalg.lstsq(V, a.T, rcond=None)
-        a -= (V @ coef).T
-    return a.astype(np.float32)
+    buffers and .frames stay verbatim).  Shared implementation:
+    reconstruct.row_align (pipeline v2, equivalence-tested)."""
+    return reconstruct.row_align(arr, method)
 
 
 def _sweep_residual(D, U, maxshift=32):
     """Return (dx, dy, r): the shift such that U[row+dy, col+dx] best
     matches D[row, col] — i.e. the drift-corr spin-box increment that would
-    align the up-sweep image U onto the down-sweep image D — plus the
+    align the down-sweep image U onto the up-sweep image D — plus the
     correlation r at that shift.  Separable search, wrap edges tolerated."""
     Dm = D - D.mean()
     def score(A):
@@ -87,8 +57,9 @@ def _sweep_residual(D, U, maxshift=32):
 
 class SweepSnapshotWindow(QWidget):
     """Floating window with the Err image frozen at the two sweep boundaries:
-    left panel is the frame as the down half completed, right panel as the up
-    half terminated (line-counter wrap).  Fed by LiveRaster.update_line; each
+    left panel is the frame as the up sweep (first half of the Y-cycle)
+    completed, right panel as the down sweep ended at the line-counter wrap
+    (names per DECISIONS D9, as in the replay viewer).  Fed by LiveRaster.update_line; each
     panel keeps the levels/LUT that were on screen at its capture instant."""
 
     def __init__(self):
@@ -100,8 +71,8 @@ class SweepSnapshotWindow(QWidget):
         glw = pg.GraphicsLayoutWidget()
         lay.addWidget(glw)
         self._lbls, self._imgs, self._vbs = {}, {}, {}
-        for col, (key, title) in enumerate((("down", "End of down sweep"),
-                                            ("up", "End of up sweep"))):
+        for col, (key, title) in enumerate((("up", "End of up sweep"),
+                                            ("down", "End of down sweep"))):
             self._lbls[key] = glw.addLabel(f"{title} — waiting…",
                                            row=0, col=col)
             vb = glw.addViewBox(row=1, col=col)
@@ -130,7 +101,7 @@ class SweepSnapshotWindow(QWidget):
         img.setRect(pg.QtCore.QRectF(0, 0, arr.shape[1], arr.shape[0]))
         img.setLevels(levels)
         img.setLookupTable(lut)
-        title = "End of down sweep" if key == "down" else "End of up sweep"
+        title = "End of up sweep" if key == "up" else "End of down sweep"
         stamp = datetime.now().strftime("%H:%M:%S")
         self._lbls[key].setText(f"{title} — {stamp}")
         self._vbs[key].autoRange(padding=0.02)
@@ -177,17 +148,13 @@ class LiveRaster(QWidget):
 
         self._settings = settings_store.settings()
 
-        self._z_trace   = np.zeros((self._H, self._half), dtype=np.float32)
-        self._z_retrace = np.zeros((self._H, self._half), dtype=np.float32)
-        self._e_trace   = np.zeros((self._H, self._half), dtype=np.float32)
-        self._e_retrace = np.zeros((self._H, self._half), dtype=np.float32)
-        self._painted   = np.zeros(self._H, dtype=bool)  # rows written this scan
-        self._paint_seq = np.zeros(self._H, dtype=np.int64)  # recency, see autolevel
-        self._paint_counter = 0
+        # Fold and buffers live in the shared pipeline (reconstruct.LiveFold);
+        # the attributes below alias its arrays so existing readers keep working.
+        self._bind_fold()
 
         # Y-parity tracking (alternating-direction frames; see update_line).
+        # The last raw line position lives in the shared fold (_last_raw_row).
         self._pass_parity = False
-        self._last_raw_row = -1
 
         # Err-channel DISPLAY transform (raw buffers above stay verbatim):
         # in constant-height mode the log-error channel renders morphology
@@ -208,9 +175,9 @@ class LiveRaster(QWidget):
 
         self._snap_win = None
 
-        # Up/down sweep drift correction (display-time, pixels): descending-
-        # half lines are shifted by (-dx, -dy) onto the ascending pass's
-        # frame of reference before painting.  0/0 = verbatim, no correction.
+        # Up/down sweep drift correction (display-time, pixels): down-sweep
+        # lines (second half of the Y-cycle) are shifted by (-dx, -dy) onto the
+        # up sweep's frame of reference before painting.  0/0 = verbatim, no correction.
         # Raw .frames on disk are never touched.  Persisted in QSettings.
         self._drift_dx = int(self._settings.value("drift_corr_x", 0))
         self._drift_dy = int(self._settings.value("drift_corr_y", -4))
@@ -236,7 +203,7 @@ class LiveRaster(QWidget):
                 "(forward trace; retrace kept in saved frames)")
 
     def _z_display(self, arr):
-        return -arr if self._peaks_bright else arr
+        return reconstruct.z_display(arr, self._peaks_bright)
 
     def _e_display(self, arr):
         if not self._lin_mode:
@@ -317,16 +284,16 @@ class LiveRaster(QWidget):
         self._sb_drift_x.setRange(-128, 128)
         self._sb_drift_x.setValue(self._drift_dx)
         self._sb_drift_x.setToolTip(
-            "Shift up-sweep lines this many pixels along the fast axis to "
-            "align them with the down sweep (0 = off)")
+            "Shift down-sweep lines (second half of each Y-cycle) this many "
+            "pixels along the fast axis to align them with the up sweep (0 = off)")
         bar.addWidget(self._sb_drift_x)
         bar.addWidget(QLabel("Y:"))
         self._sb_drift_y = QSpinBox()
         self._sb_drift_y.setRange(-128, 128)
         self._sb_drift_y.setValue(self._drift_dy)
         self._sb_drift_y.setToolTip(
-            "Shift up-sweep lines this many rows to align them with the "
-            "down sweep (0 = off)")
+            "Shift down-sweep lines this many rows to align them with the "
+            "up sweep (0 = off)")
         bar.addWidget(self._sb_drift_y)
         for sb in (self._sb_drift_x, self._sb_drift_y):
             sb.valueChanged.connect(self._set_drift)
@@ -335,7 +302,7 @@ class LiveRaster(QWidget):
         self._btn_snaps.setMaximumWidth(110)
         self._btn_snaps.setToolTip(
             "Open a window that freezes the Err image at the end of each "
-            "down sweep and each up sweep, with a recommended drift-corr "
+            "up sweep and each down sweep, with a recommended drift-corr "
             "X/Y computed every cycle")
         self._btn_snaps.clicked.connect(self._show_snap_window)
         bar.addWidget(self._btn_snaps)
@@ -451,80 +418,56 @@ class LiveRaster(QWidget):
     def resize_buffers(self, image_height: int, pixels_per_line: int):
         self._H    = image_height
         self._half = pixels_per_line // 2
-        shape = (self._H, self._half)
-        self._z_trace   = np.zeros(shape, dtype=np.float32)
-        self._z_retrace = np.zeros(shape, dtype=np.float32)
-        self._e_trace   = np.zeros(shape, dtype=np.float32)
-        self._e_retrace = np.zeros(shape, dtype=np.float32)
-        self._painted = np.zeros(shape[0], dtype=bool)  # rows written this scan
-        self._paint_seq = np.zeros(shape[0], dtype=np.int64)
-        self._paint_counter = 0
+        self._bind_fold()
         self._pass_parity = False
-        self._last_raw_row = -1
         self._apply_physical_rects()
         self._push_all_images(auto=False)
         self.auto_range()   # buffers/rects changed — refit the view
 
+    def _bind_fold(self):
+        """(Re)create the shared fold for the current geometry and alias its
+        buffers (pipeline v2, reconstruct.LiveFold)."""
+        self._fold = reconstruct.LiveFold(
+            self._H, self._half,
+            getattr(self, "_drift_dx", 0), getattr(self, "_drift_dy", 0))
+        f = self._fold
+        self._z_trace, self._z_retrace = f.z_trace, f.z_retrace
+        self._e_trace, self._e_retrace = f.e_trace, f.e_retrace
+        self._painted, self._paint_seq = f.painted, f.paint_seq
+        self._paint_counter = f.paint_counter
+
+    @property
+    def _last_raw_row(self):
+        return self._fold.last_raw_row
+
     def clear(self):
-        for buf in (self._z_trace, self._z_retrace,
-                    self._e_trace, self._e_retrace):
-            buf[:] = 0
-        self._painted[:] = False
-        self._paint_seq[:] = 0
+        self._fold.reset()
         self._push_all_images(auto=False)
 
     @Slot(int, object, object)
     def update_line(self, line_number: int,
                      z_arr: np.ndarray, err_arr: np.ndarray):
-        # Y FOLD (corrected 2026-07-15, second iteration): dy = dx/px, so
-        # ONE line-counter cycle (0..2H-1) contains a full Y triangle —
-        # lines 0..H-1 ascend, lines H..2H-1 descend back over the SAME
-        # physical rows.  Fold the descending half onto the ascending rows.
-        # (The earlier per-cycle flip assumed one direction per cycle and
-        # painted every band twice, mirrored — the operator's "accordion".)
-        raw = line_number % (2 * self._H)
-        wrapped = raw < self._last_raw_row
-        half_done = self._last_raw_row < self._H <= raw
+        # Y FOLD (shared: reconstruct.LiveFold): one line-counter cycle
+        # (0..2H-1) is one Y triangle; lines 0..H-1 are the UP sweep, H..2H-1
+        # the DOWN sweep folded back over the same rows (D9 naming).
+        ev = self._fold.peek(line_number)
         # Snapshot the Err frame at the sweep boundaries BEFORE this line is
         # painted (the buffer still holds the just-completed sweep) and before
         # any autolevel, so each panel shows exactly what was on screen.
         if self._snap_win is not None and self._snap_win.isVisible():
-            if half_done:
-                self._take_snapshot("down")
-            if wrapped:
+            if ev["half_done"]:
                 self._take_snapshot("up")
-        if wrapped and self._rb_lvl_cycle.isChecked():
+            if ev["wrapped"]:
+                self._take_snapshot("down")
+        if ev["wrapped"] and self._rb_lvl_cycle.isChecked():
             # cycle wrapped: one full up+down Y triangle completed
             self._do_autolevel()
-        self._last_raw_row = raw
-        row = raw if raw < self._H else (2 * self._H - 1 - raw)
+        self._fold.drift_dx, self._fold.drift_dy = self._drift_dx, self._drift_dy
+        res = self._fold.add_line(line_number, z_arr, err_arr)
+        self._paint_counter = self._fold.paint_counter
+        if not res["painted"]:
+            return  # short/garbled frame, or drift-shifted row off the frame
         half = self._half
-        if len(z_arr) < 2 * half:
-            return  # short/garbled frame; skip
-
-        zt, zr = z_arr[:half], z_arr[half:2 * half][::-1]
-        et, er = err_arr[:half], err_arr[half:2 * half][::-1]
-
-        # Drift correction: re-target descending-half (up-sweep) lines onto
-        # the ascending pass's frame of reference.  With 0/0 this block is a
-        # no-op and painting is verbatim.
-        if raw >= self._H:
-            row -= self._drift_dy
-            if not (0 <= row < self._H):
-                return  # corrected row falls outside the frame; drop
-            if self._drift_dx:
-                zt = np.roll(zt, -self._drift_dx)
-                zr = np.roll(zr, -self._drift_dx)
-                et = np.roll(et, -self._drift_dx)
-                er = np.roll(er, -self._drift_dx)
-
-        self._z_trace[row, :]   = zt.astype(np.float32)
-        self._z_retrace[row, :] = zr.astype(np.float32)
-        self._e_trace[row, :]   = et.astype(np.float32)
-        self._e_retrace[row, :] = er.astype(np.float32)
-        self._painted[row] = True
-        self._paint_counter += 1
-        self._paint_seq[row] = self._paint_counter
 
         # Row-aligned display is expensive (H degree-5 polyfits per channel
         # per repaint), so with Row align on, full-image repaints cap at
@@ -577,15 +520,15 @@ class LiveRaster(QWidget):
             key, arr,
             self._hist_e.getLevels(),
             self._hist_e.gradient.getLookupTable(512))
-        # Once per cycle (at the up capture) compute the residual shift
-        # between the two corrected panels; the recommendation is absolute:
-        # current spin values + residual, so "dialed in" reads back your
-        # own settings.
-        if key == "down":
-            self._snap_down = arr
-        elif (getattr(self, "_snap_down", None) is not None
-                and self._snap_down.shape == arr.shape):
-            dx, dy, r = _sweep_residual(self._snap_down, arr)
+        # Once per cycle (at the down capture, the line-counter wrap) compute
+        # the residual shift between the two corrected panels; the
+        # recommendation is absolute: current spin values + residual, so
+        # "dialed in" reads back your own settings.
+        if key == "up":
+            self._snap_up = arr
+        elif (getattr(self, "_snap_up", None) is not None
+                and self._snap_up.shape == arr.shape):
+            dx, dy, r = _sweep_residual(self._snap_up, arr)
             self._snap_win.set_recommendation(
                 self._drift_dx + dx, self._drift_dy + dy, r)
 

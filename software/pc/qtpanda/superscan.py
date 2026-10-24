@@ -15,6 +15,8 @@ import math
 
 import numpy as np
 
+import reconstruct
+
 LOG_K = (2 ** 19 - 1) / math.log(2 ** 15 + 1)
 
 
@@ -40,10 +42,9 @@ def fold_frame(lines, image_height, forward_only=True):
     img = np.full((H, W), np.nan, np.float64)
     for ln, tr in lines:
         raw = ln % (2 * H)
-        if forward_only and raw >= H:
+        if forward_only and reconstruct.direction(raw, H) != "up":
             continue
-        row = raw if raw < H else (2 * H - 1 - raw)
-        img[row] = tr
+        img[reconstruct.fold_row(raw, H)] = tr
     # Fill untouched rows from the NEAREST valid row.  The old version
     # copied only from r-1, so a run of empty rows propagated NaN (and a
     # leading empty row copied a still-empty neighbour) — with

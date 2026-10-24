@@ -22,43 +22,32 @@ import os
 import numpy as np
 
 import frame_logger
+import reconstruct
 
 
 def rebuild_images(frames_path, image_height=256):
     """Replay all frames through the LiveRaster mapping; returns dict of
     float32 arrays (z_trace, z_retrace, e_trace, e_retrace) plus stats."""
-    z_t = z_r = e_t = e_r = None
+    # The shared live fold (reconstruct.LiveFold, pipeline v2) — the same
+    # code the live raster paints with, so replay == live by construction.
+    fold = None
     half = None
     n = 0
     t0 = t1 = None
-    parity = False
-    last_raw_row = -1
     for t, line, z, e in frame_logger.read_frames(frames_path):
-        if half is None:
+        if fold is None:
             half = len(z) // 2
-            shape = (image_height, half)
-            z_t = np.zeros(shape, np.float32)
-            z_r = np.zeros(shape, np.float32)
-            e_t = np.zeros(shape, np.float32)
-            e_r = np.zeros(shape, np.float32)
+            fold = reconstruct.LiveFold(image_height, half)
         if len(z) < 2 * half:
             continue                       # same skip rule as LiveRaster
-        # Y FOLD, matching LiveRaster: one line-counter cycle (0..2H-1) is a
-        # full Y up+down triangle; descending half mirrors onto the same
-        # physical rows (corrected 2026-07-15).
-        raw = line % (2 * image_height)
-        row = raw if raw < image_height else (2 * image_height - 1 - raw)
-        z_t[row, :] = z[:half]
-        z_r[row, :] = z[half:2 * half][::-1]
-        e_t[row, :] = e[:half]
-        e_r[row, :] = e[half:2 * half][::-1]
+        fold.add_line(line, z, e)
         t0 = t if t0 is None else t0
         t1 = t
         n += 1
     if n == 0:
         raise SystemExit(f"no frames in {frames_path}")
-    return {"z_trace": z_t, "z_retrace": z_r,
-            "e_trace": e_t, "e_retrace": e_r,
+    return {"z_trace": fold.z_trace, "z_retrace": fold.z_retrace,
+            "e_trace": fold.e_trace, "e_retrace": fold.e_retrace,
             "n_frames": n, "duration_s": (t1 - t0) if n > 1 else 0.0,
             "half": half}
 

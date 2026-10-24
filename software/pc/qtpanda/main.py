@@ -3744,7 +3744,17 @@ class Widget(QWidget):
     def _scan_frame_settings(self):
         """Snapshot everything needed for faithful replay of a frame log."""
         sc = self._scan_ctrl
-        spp = int(1e6 / max(sc.line_rate_hz * 40.0 * sc.pixels_per_line, 1.0))
+        # CR7 (2026-10-23): samples/pixel as the firmware really computes it —
+        # the configured ISR rate (control_rate_hz, SETD) and the SPPX
+        # override; the old line assumed a 40 µs tick and recorded 4x low.
+        isr = float(getattr(self._cal, "control_rate_hz", 25000.0))
+        px = max(1, int(sc.pixels_per_line))
+        if sc.samples_per_pixel and sc.samples_per_pixel > 0:
+            spp, spp_src = int(sc.samples_per_pixel), "SPPX override"
+        else:
+            spp = int(isr / max(sc.line_rate_hz * px, 1e-9))
+            spp_src = "derived like updateStepSizes() (truncation)"
+        spp = min(max(spp, 1), 4000)
         cal = {name: getattr(self._cal, name) for name in calibration.FIELDS}
         return {
             "scan_size_nm": sc.scan_size_nm,
@@ -3755,8 +3765,13 @@ class Widget(QWidget):
             "setpoint_pa": sc.setpoint_pa,
             "kp": sc.kp,
             "ki": sc.ki,
-            # firmware derives samples/pixel; clamps to >=1 (see updateStepSizes)
-            "derived_samples_per_pixel": max(spp, 1),
+            # firmware derives samples/pixel; clamps to 1..4000 (updateStepSizes)
+            "derived_samples_per_pixel": spp,
+            "samples_per_pixel_source": spp_src,
+            "isr_rate_hz": isr,
+            "realised_line_rate_hz": isr / (spp * px),
+            "image_height": px // 2,
+            "settings_version": 2,
             # LRPT passes averaged per emitted line (1 = single pass);
             # effective line rate = line_rate_hz / line_repeat
             "line_repeat": sc.line_repeat,

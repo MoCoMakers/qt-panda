@@ -34,6 +34,12 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import frame_logger
+import reconstruct
+
+# v2 (2026-10-23): segmentation/fold via reconstruct.py; slip-corrected rows (D34) with frozen
+# sweep numbering (D39) and a <base>.corrections.json change-log.  Older indexes are rebuilt.
+INDEX_VERSION = 2
+DEFAULT_LINE_INDEX = "slip_corrected"
 
 DEFAULT_HEIGHT = 256
 _SID_RE = re.compile(r"_s(\d{13})")
@@ -88,7 +94,7 @@ def _scsz_timeline(frames_path, sidecar):
     return out
 
 
-def build_index(frames_path, image_height=None, records=None):
+def build_index(frames_path, image_height=None, records=None, line_index=DEFAULT_LINE_INDEX):
     """Segment a .frames file into sweeps.  Returns the index dict."""
     sidecar = frame_logger.read_sidecar(frames_path) or {}
     settings = sidecar.get("settings", {})
@@ -98,49 +104,19 @@ def build_index(frames_path, image_height=None, records=None):
     # non-512-px recording at the wrong period — daylog, sweep_player and
     # the timeline draft then saw 0 full sweeps in a 128-px file that
     # really holds 168 (audit 2026-07-31).
-    H = int(image_height or settings.get("image_height")
-            or (int(settings.get("pixels_per_line", 0)) // 2)
-            or (len(records[0][2]) // 2 if records else DEFAULT_HEIGHT))
-
-    epochs, sweeps = [], []
-    cur = None            # active sweep accumulator
-    prev_raw = None
-    half = None
-    epoch_id = 0
-
-    def close(reason):
-        nonlocal cur
-        if cur is None:
-            return
-        cur["partial"] = cur["lines"] < H
-        cur["end_reason"] = reason
-        sweeps.append(cur)
-        cur = None
-
-    for idx, (t, line, z, e) in enumerate(records):
-        h2 = len(z) // 2
-        if half is None:
-            half = h2
-        if h2 != half:                      # geometry change -> new epoch
-            close("geometry_change")
-            epochs.append({"epoch": epoch_id, "pixels_per_direction": half})
-            epoch_id += 1
-            half = h2
-            prev_raw = None
-        raw = line % (2 * H)
-        direction = "up" if raw < H else "down"
-        wrapped = prev_raw is not None and raw < prev_raw
-        if cur is None or direction != cur["dir"] or wrapped:
-            close("boundary")
-            cur = {"i": len(sweeps), "epoch": epoch_id, "dir": direction,
-                   "t_start": t, "t_end": t, "lines": 0,
-                   "first_record": idx, "last_record": idx}
-        cur["t_end"] = t
-        cur["last_record"] = idx
-        cur["lines"] += 1
-        prev_raw = raw
-    close("end_of_file")
-    epochs.append({"epoch": epoch_id, "pixels_per_direction": half})
+    H = reconstruct.derive_height(settings, records, image_height, DEFAULT_HEIGHT)
+    # Sweep identity (numbering) always comes from the STAMPED line numbers (D39): references
+    # like "#1808" stay valid.  The slip correction only changes where rows are placed.
+    sweeps, epochs = reconstruct.build_sweeps(records, H)
+    lines, li_info = reconstruct.line_indices(records, H, line_index)
+    if line_index == "slip_corrected" and frames_path and records:
+        n_remap = sum(e.get("n_remapped", 0) for e in li_info.get("epochs", []))
+        if n_remap:                          # trail details; written by write_index only
+            stamps = [r[1] for r in records]
+            changed = [k for k, (a, b) in enumerate(zip(stamps, lines)) if a != b]
+            li_info["affected_sweeps"] = [s["i"] for s in sweeps if s["last_record"] >= changed[0]]
+            li_info["mapping"] = "records >= slip_phase_from_record: corrected = (stamped - 1) mod bins"
+            li_info["examples"] = [[k, stamps[k], lines[k]] for k in changed[:8]]
 
     # per-sweep physical scale: last journaled SCSZ at or before each
     # sweep's start (mid-scan zooms make the sidecar's single value stale)
@@ -156,6 +132,9 @@ def build_index(frames_path, image_height=None, records=None):
             s["scan_size_nm"] = nm
 
     return {
+        "index_version": INDEX_VERSION,
+        "line_index": line_index,
+        "line_index_info": li_info,
         "source": os.path.basename(frames_path),
         "session": _session_of(frames_path),
         "image_height": H,
@@ -176,6 +155,9 @@ def write_index(frames_path, image_height=None):
     idx = build_index(frames_path, image_height)
     with open(index_path(frames_path), "w") as f:
         json.dump(idx, f, indent=1)
+    # D34 change-log trail beside the persisted index (build_index alone stays read-only)
+    if idx["line_index_info"].get("affected_sweeps"):
+        reconstruct.write_corrections(frames_path, idx["line_index_info"])
     return idx
 
 
@@ -187,29 +169,27 @@ def load_or_build(frames_path, image_height=None):
     try:
         if os.path.getmtime(p) >= os.path.getmtime(frames_path):
             with open(p) as f:
-                return json.load(f)
+                idx = json.load(f)
+            if idx.get("index_version") == INDEX_VERSION:
+                return idx
     except (OSError, ValueError):
         pass
     return write_index(frames_path, image_height)
 
 
-def sweep_image(records, sweep, H, half, channel="z_trace"):
+def sweep_image(records, sweep, H, half, channel="z_trace", lines=None):
     """(H, half) float32 image of one sweep; NaN rows = lines never
     received (partial sweep / drops), so viewers can show them distinctly.
-    channel: z_trace | z_retrace | e_trace | e_retrace."""
-    img = np.full((H, half), np.nan, np.float32)
-    src_z = channel.startswith("z")
-    retrace = channel.endswith("retrace")
-    for t, line, z, e in records[sweep["first_record"]:
-                                 sweep["last_record"] + 1]:
-        if len(z) < 2 * half:
-            continue
-        raw = line % (2 * H)
-        row = raw if raw < H else (2 * H - 1 - raw)
-        vals = (z if src_z else e)
-        seg = vals[half:2 * half][::-1] if retrace else vals[:half]
-        img[row, :] = seg
-    return img
+    channel: z_trace | z_retrace | e_trace | e_retrace.  `lines` = corrected
+    line indices (line_indices_for); None = stamped (the pre-v2 behaviour)."""
+    return reconstruct.sweep_image(records, sweep, H, half, channel, lines)
+
+
+def line_indices_for(records, idx, mode=None):
+    """Line indices for a recording's records under the index's mode (or `mode`)."""
+    mode = mode or idx.get("line_index", "stamped")
+    lines, _ = reconstruct.line_indices(records, idx["image_height"], mode)
+    return lines
 
 
 def main():

@@ -1,7 +1,8 @@
 """raw_scan_reconstruct — ground-truth spatial reconstruction from RAWD.
 
-The strict-timing instrument (operator requirement 2026-07-15): every 40 us
-ISR tick has a deterministic commanded X position (triangle sweep, spp
+The strict-timing instrument (operator requirement 2026-07-15): every ISR
+tick (1/isr_hz; the firmware rate, calibration control_rate_hz — NOT a fixed
+40 us, CR7 2026-10-23) has a deterministic commanded X position (triangle sweep, spp
 samples per pixel, px pixels per line covering trace+retrace).  Given a
 RAWD capture taken DURING a continuous scan, this maps each raw sample to
 its line phase, rebuilds pixels independently of the firmware's binning,
@@ -9,18 +10,20 @@ and answers, from first principles:
 
   1. alignment  — the tick offset that best matches the logged 'L' frames
                   (verifies the firmware's pixel binning is where it thinks);
-  2. topology   — trace vs reversed-retrace correlation at 40 us resolution
+  2. topology   — trace vs reversed-retrace correlation at one-tick resolution
                   (real surface signal must correlate; pure junction noise
                   cannot), plus the best lag = measured system delay
                   (preamp RC + piezo response) in samples and nm.
 
 Usage:
-    python raw_scan_reconstruct.py <capture.raw> <scan.frames> <spp> <px>
+    python raw_scan_reconstruct.py <capture.raw> <scan.frames> <spp> <px> [isr_hz]
+    (isr_hz default: the recording sidecar's isr_rate_hz, else calibration control_rate_hz)
 """
 import sys
 
 import numpy as np
 
+import calibration
 import frame_logger
 import raw_logger
 
@@ -76,7 +79,7 @@ def spatial_verdict(img, spp):
             len(cors))
 
 
-def main(raw_path, frames_path, spp, px):
+def main(raw_path, frames_path, spp, px, isr_hz=25000.0):
     d = raw_logger.to_arrays(raw_path)
     err = d["err"].astype(np.float64)
     seqs = d["block_seq"].astype(np.int64)
@@ -96,7 +99,7 @@ def main(raw_path, frames_path, spp, px):
     print(f"ground-truth topology: trace vs retrace median r = {med_r:+.3f} "
           f"over {n} lines")
     print(f"system lag (trace/retrace half-shift): {med_lag:+.1f} px "
-          f"= {med_lag * spp * 40:.0f} us" if not np.isnan(med_lag) else "")
+          f"= {med_lag * spp * 1e6 / isr_hz:.0f} us" if not np.isnan(med_lag) else "")
     if med_r > 0.5:
         print("VERDICT: real spatial signal present — continuous pipeline "
               "carries topology; any display issue is downstream.")
@@ -108,4 +111,11 @@ def main(raw_path, frames_path, spp, px):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4]))
+    if len(sys.argv) > 5:
+        _isr = float(sys.argv[5])
+    else:
+        _set = frame_logger.read_sidecar(sys.argv[2]).get("settings", {})
+        _isr = float(_set.get("isr_rate_hz")
+                     or _set.get("calibration", {}).get("control_rate_hz")
+                     or calibration.Calibration().control_rate_hz)
+    main(sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4]), _isr)
