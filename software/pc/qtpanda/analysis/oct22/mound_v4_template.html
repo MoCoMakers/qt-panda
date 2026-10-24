@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Oct 22 Mound Slices</title>
+<style>
+:root{--bg:#f7f6f3;--fg:#1d1d1f;--mut:#5f6368;--line:#dcd8d0;--panel:#ffffff;--acc:#b4531a;--cy:#0aa6b8}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#121316;--fg:#e8e6e3;--mut:#a3a3a3;--line:#33353a;--panel:#1c1e22;--acc:#f0a46a;--cy:#3fe0f0}}
+:root[data-theme="dark"]{--bg:#121316;--fg:#e8e6e3;--mut:#a3a3a3;--line:#33353a;--panel:#1c1e22;--acc:#f0a46a;--cy:#3fe0f0}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,"Segoe UI",sans-serif}
+#wrap{display:grid;grid-template-columns:1fr minmax(380px,560px);height:100vh}
+#view{position:relative;min-height:320px}
+#side{border-left:1px solid var(--line);background:var(--panel);overflow:auto;padding:12px 14px}
+@media (max-width:820px){#wrap{grid-template-columns:1fr;height:auto}#view{height:60vh}#side{border-left:0;border-top:1px solid var(--line)}}
+h1{font-size:16px;margin:0 0 2px} h2{font-size:13px;margin:12px 0 4px}
+.mut{color:var(--mut);font-size:12.5px}
+input[type=range]{width:100%}
+.row{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
+button{font:inherit;font-size:12.5px;padding:4px 9px;border:1px solid var(--line);border-radius:6px;background:transparent;color:var(--fg);cursor:pointer}
+button.on{border-color:var(--acc);color:var(--acc)}
+.imgs{display:block}
+.imgs figure{margin:0} .imgs img{width:100%;display:block;border-radius:4px;border:1px solid var(--line)}
+.imgs figcaption{font-size:11.5px;color:var(--mut);margin-top:2px}
+#stats{font-size:13px;margin:6px 0} #stats b{color:var(--acc)}
+#hint{position:absolute;left:10px;bottom:8px;font-size:12px;color:var(--mut)}
+#err{display:none;padding:16px}
+table{border-collapse:collapse;font-size:12px;width:100%} td,th{border-bottom:1px solid var(--line);padding:2px 4px;text-align:left}
+tr.cur td{color:var(--acc);font-weight:600}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="view"><div id="hint">Drag to orbit · scroll to zoom · right-drag to pan</div></div>
+  <div id="side">
+    <h1>Mound slices, Oct 22 #20–#30</h1>
+    <div class="mut">Each slice is one sweep's dark (high-current) outline around your circled feature, mapped into #20's coordinates with the drift model. Height = the highest slice whose outline contains the point (terrace stack, smoothed). Heights are slice ranks, not nm.</div>
+
+    <h2>Slice order</h2>
+    <div class="row">
+      <button id="oYours" class="on">Your reading: #20 = summit, bright = cross-section</button>
+      <button id="oSize">Dark outlines by size</button>
+      <button id="oTime">Dark outlines by time</button>
+    </div>
+    <div class="mut" id="orderNote"></div>
+
+    <h2>Slice (top → down)</h2>
+    <input id="slice" type="range" min="1" max="9" step="1" value="1">
+    <div id="stats"></div>
+
+    <div class="row">
+      <button id="vRaw" class="on">Source as recorded</button>
+      <button id="vAna">As analysed (row-levelled, smoothed)</button>
+    </div>
+    <div class="imgs">
+      <figure><img id="imFull" alt="Source frame"><figcaption id="cap">Full 30 nm frame, error trace, exactly as recorded (2–98% levels, no processing). Cyan: the exact contour used. Dotted white: the circle region used in your-reading mode. Green: your circle (solid in #20), carried by the drift model.</figcaption></figure>
+    </div>
+    <div class="row"><button id="b18">Show #18 (context, not in stack)</button></div>
+
+    <h2>View</h2>
+    <div class="row">
+      <button id="bAll" class="on">All contours</button>
+      <button id="bRotate">Auto-rotate</button>
+      <button id="bTop">Top view</button><button id="bTilt">Tilted view</button>
+    </div>
+    <label class="mut" for="exag">Vertical scale</label>
+    <input id="exag" type="range" min="0.1" max="1.2" step="0.05" value="0.5">
+
+    <h2>All slices</h2>
+    <table id="tbl"><thead><tr><th>Level</th><th>Sweep</th><th>Time</th><th>KIGA</th><th>Area nm²</th><th>Extent nm²</th><th>Inside next</th></tr></thead><tbody></tbody></table>
+    <div class="mut" style="margin-top:6px">“Inside next”: share of this slice's outline lying inside the slice below it. A clean mountain gives values near 100%; chance here is about 21–37%.</div>
+  </div>
+</div>
+<div id="err">Could not load three.js from the CDN (no internet?). The static version is in MORPHOLOGY-2026-10-22.html, section C4.</div>
+
+<script>window.MD = __DATA__;</script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(function () {
+  if (!window.THREE || !THREE.OrbitControls) { document.getElementById('err').style.display = 'block'; return; }
+  const MD = window.MD, R = MD.rows, C = MD.cols, px = MD.px_nm, W = (C - 1) * px, Hn = (R - 1) * px;
+  const N = MD.orders.yours.length;
+  const view = document.getElementById('view');
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
+  view.appendChild(renderer.domElement);
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#f7f6f3');
+  const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 500); camera.up.set(0, 0, 1);
+  camera.position.set(0, -0.01, Math.max(W, Hn) * 1.7);   // default: top view, matches the 2D images
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.target.set(0, 0, 0); controls.enableDamping = true; controls.autoRotateSpeed = 1.0;
+  scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+  const sun = new THREE.DirectionalLight(0xffffff, 0.75); sun.position.set(-10, -14, 22); scene.add(sun);
+  const wx = c => c * px - W / 2, wy = r => Hn / 2 - r * px;
+
+  const geo = new THREE.PlaneGeometry(W, Hn, C - 1, R - 1);
+  const pos = geo.attributes.position, colors = new Float32Array(pos.count * 3);
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, side: THREE.DoubleSide, transparent: true, opacity: 0.92 }));
+  scene.add(mesh);
+  const plane = new THREE.Mesh(new THREE.PlaneGeometry(W * 1.02, Hn * 1.02),
+    new THREE.MeshBasicMaterial({ color: 0xf0a46a, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false }));
+  scene.add(plane);
+  const frame = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.PlaneGeometry(W, Hn)), new THREE.LineBasicMaterial({ color: 0x888888 }));
+  scene.add(frame);
+  const [cr, cc, hr, hc] = MD.circle, cp = [];
+  for (let a = 0; a <= 64; a++) { const t = a / 64 * 2 * Math.PI; cp.push(new THREE.Vector3(wx(cc + hc * Math.cos(t)), wy(cr + hr * Math.sin(t)), 0.02)); }
+  scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(cp), new THREE.LineBasicMaterial({ color: 0x39ff14 })));
+
+  const terrain = t => {
+    const st = [[0, [0.20, 0.25, 0.60]], [0.15, [0.10, 0.55, 0.75]], [0.35, [0.25, 0.70, 0.40]], [0.6, [0.85, 0.80, 0.50]], [0.82, [0.55, 0.40, 0.30]], [1, [0.97, 0.97, 0.97]]];
+    for (let k = 1; k < st.length; k++) if (t <= st[k][0]) { const [a, ca] = st[k - 1], [b, cb] = st[k], f = (t - a) / (b - a); return ca.map((v, j) => v + f * (cb[j] - v)); }
+    return st[st.length - 1][1];
+  };
+
+  let order = 'yours', level = 1, exag = 0.5, showAll = true, viewRaw = true;
+  let contourGroup = new THREE.Group(); scene.add(contourGroup);
+  const sweepAt = lv => MD.orders[order][lv - 1];
+  const view_ = id => (order === 'yours' ? MD.sweeps[id].yours : MD.sweeps[id]);          // level 1 = top of the order (summit)
+  const heightOf = lv => N - lv + 1;                        // summit slice sits highest
+
+  function buildContours() {
+    scene.remove(contourGroup); contourGroup = new THREE.Group();
+    for (let lv = 1; lv <= N; lv++) {
+      const s = view_(sweepAt(lv)), cur = lv === level;
+      if (!showAll && !cur) continue;
+      const mat = new THREE.LineBasicMaterial({ color: cur ? 0x00e5ff : 0x555555, transparent: !cur, opacity: cur ? 1 : 0.55 });
+      for (const seg of s.segs) {
+        const pts = seg.map(([x, y]) => new THREE.Vector3(wx(x), wy(y), heightOf(lv) * exag + (cur ? 0.03 : 0)));
+        contourGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), mat));
+      }
+    }
+    scene.add(contourGroup);
+  }
+  function rebuild() {
+    const H = MD.heights[order];
+    for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) {
+      const k = r * C + c, h = H[r][c]; pos.setZ(k, h * exag);
+      const col = terrain(Math.min(1, h / N)); colors[3 * k] = col[0]; colors[3 * k + 1] = col[1]; colors[3 * k + 2] = col[2];
+    }
+    pos.needsUpdate = true; geo.attributes.color.needsUpdate = true; geo.computeVertexNormals();
+    plane.position.z = (heightOf(level) - 0.5) * exag;
+    buildContours();
+  }
+  function side() {
+    const id = sweepAt(level), s0 = MD.sweeps[id], s = view_(id), nest = MD.nesting[order][level - 1];
+    document.getElementById('imFull').src = viewRaw ? s.raw : s.analysed;
+    document.getElementById('stats').innerHTML =
+      `Slice <b>${level}</b> of ${N} (top → down): sweep <b>#${id}</b> ${s0.dir}, ${s0.time}, KIGA ${s0.kiga}<br>` +
+      (order === 'yours' ? `Cross-section (bright inside the dark structure) <b>${s.area_nm2} nm²</b>` :
+        `Dark area ${s0.dark_nm2} nm² · outer extent ${s0.extent_nm2} nm²`) + ` · ${s.segs.length} contour piece(s)` +
+      (nest !== undefined ? `<br>${Math.round(nest * 100)}% of this outline lies inside the next slice down` : '<br>Bottom slice');
+    const tb = document.querySelector('#tbl tbody'); tb.innerHTML = '';
+    MD.orders[order].forEach((sid, k) => {
+      const q = MD.sweeps[sid], qq = view_(sid), n = MD.nesting[order][k];
+      const tr = document.createElement('tr'); if (k + 1 === level) tr.className = 'cur';
+      tr.innerHTML = `<td>${k + 1}</td><td>#${sid} ${q.dir}</td><td>${q.time}</td><td>${q.kiga}</td><td>${order === 'yours' ? qq.area_nm2 : q.dark_nm2}</td><td>${order === 'yours' ? '—' : q.extent_nm2}</td><td>${n === undefined ? '—' : Math.round(n * 100) + '%'}</td>`;
+      tr.style.cursor = 'pointer'; tr.onclick = () => { level = k + 1; sl.value = level; rebuild(); side(); };
+      tb.appendChild(tr);
+    });
+    document.getElementById('orderNote').textContent = order === 'yours'
+      ? 'Your narrative: #20 is the summit and each later sweep is a slice further down. Dark read as no measurement. Cross-section = the bright region inside the dark structure (the ring’s hole, the A’s opening). It grows 14 → 18 → 33 → 29 → 30 → 45 nm² from #20 to #26, then collapses to 10–17 nm² at #27, #28 and #30. Slices #21 → #26 sit 64–71% inside the next one down; #20 → #21 only 14%. Note: the firmware error formula and the raw ADC (exactly 32767 in those pixels, the same reading as the 19:10 crash) say dark is maximum current, not absence; the other two buttons show that reading.'
+      : order === 'size'
+      ? 'Summit = smallest dark outline (#30). The outer outline stays ~12–13 nm across from #20 to #25 (hull 100–126 nm²) while the inside empties (dark 83 → 50 nm²): dot → ring → A is the middle hollowing, not wider and wider contours.'
+      : 'Summit = #20, then #21, #22 … in time. Because the outlines shrink over time, this stacks wide slices on top of narrow ones: the inverted, mushroom-like shape is the data saying time order is not top-down.';
+  }
+  const sl = document.getElementById('slice'); sl.max = N;
+  const vR = document.getElementById('vRaw'), vA = document.getElementById('vAna');
+  vR.onclick = () => { viewRaw = true; vR.classList.add('on'); vA.classList.remove('on'); side(); };
+  vA.onclick = () => { viewRaw = false; vA.classList.add('on'); vR.classList.remove('on'); side(); };
+  document.getElementById('b18').onclick = () => {
+    const c = MD.context18; document.getElementById('imFull').src = viewRaw ? c.raw : c.analysed;
+    document.getElementById('stats').innerHTML = `Context: sweep <b>#18</b> ${c.dir}, ${c.time}, KIGA ${c.kiga}. The feature sits at the bottom-right edge here, so it is not in the stack. Move the slider to return.`;
+  };
+  sl.addEventListener('input', e => { level = +e.target.value; rebuild(); side(); });
+  document.getElementById('exag').addEventListener('input', e => { exag = +e.target.value; rebuild(); });
+  const oY = document.getElementById('oYours'), oS = document.getElementById('oSize'), oT = document.getElementById('oTime');
+  const setOrder = (o, b) => { order = o; [oY, oS, oT].forEach(x => x.classList.toggle('on', x === b)); level = 1; sl.value = 1; rebuild(); side(); };
+  oY.onclick = () => setOrder('yours', oY); oS.onclick = () => setOrder('size', oS); oT.onclick = () => setOrder('time', oT);
+  const bA = document.getElementById('bAll'), bR = document.getElementById('bRotate');
+  bA.onclick = () => { showAll = !showAll; bA.classList.toggle('on', showAll); buildContours(); };
+  bR.onclick = () => { controls.autoRotate = !controls.autoRotate; bR.classList.toggle('on', controls.autoRotate); };
+  document.getElementById('bTilt').onclick = () => { camera.position.set(W * 0.2, -Hn * 1.25, Math.max(W, Hn) * 1.0); controls.target.set(0, 0, 1.5); };
+  document.getElementById('bTop').onclick = () => { camera.position.set(0, -0.01, Math.max(W, Hn) * 1.7); controls.target.set(0, 0, 0); };
+  function resize() { const w = view.clientWidth, h = view.clientHeight; renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+  window.addEventListener('resize', resize); resize();
+  rebuild(); side();
+  (function loop() { controls.update(); renderer.render(scene, camera); requestAnimationFrame(loop); })();
+})();
+</script>
+</body>
+</html>
