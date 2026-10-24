@@ -1,0 +1,1386 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1"><style>:root{color-scheme:light}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scan Resolution Limits</title>
+<style>
+:root{--ink2:#3a3a36;--s1:#2f6fd0;--s2:#e0782f;--s3:#139a8f;--s4:#c23b5a;--bg:#fafaf8;--panel:#fff;--ink:#1d1d1b;--muted:#6b6b66;--line:#e3e2dc;--grid:#eeede8;--a:#2f6fd0;--b:#d0632f;--ok:#2f9a6a;--warn:#c99a1c;--bad:#c8433a;--okbg:#e3f3ea;--warnbg:#faf0d4;--badbg:#f8e1df;--band1:rgba(47,111,208,.16);--band2:rgba(47,111,208,.07)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--ink2:#d2d1c9;--s1:#6aa0f0;--s2:#f39a5c;--s3:#3cc7b9;--s4:#ef7590;--bg:#161615;--panel:#1f1f1d;--ink:#ecebe6;--muted:#9a998f;--line:#34332f;--grid:#2a2926;--a:#6aa0f0;--b:#f0905f;--ok:#5ccb98;--warn:#e2bb4f;--bad:#ef7d72;--okbg:#1f3a2c;--warnbg:#3b321a;--badbg:#42221f;--band1:rgba(106,160,240,.22);--band2:rgba(106,160,240,.09)}}
+:root[data-theme="dark"]{--ink2:#d2d1c9;--s1:#6aa0f0;--s2:#f39a5c;--s3:#3cc7b9;--s4:#ef7590;--bg:#161615;--panel:#1f1f1d;--ink:#ecebe6;--muted:#9a998f;--line:#34332f;--grid:#2a2926;--a:#6aa0f0;--b:#f0905f;--ok:#5ccb98;--warn:#e2bb4f;--bad:#ef7d72;--okbg:#1f3a2c;--warnbg:#3b321a;--badbg:#42221f;--band1:rgba(106,160,240,.22);--band2:rgba(106,160,240,.09)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1240px;margin:0 auto;padding:24px 16px 56px}
+h1{font-size:23px;margin:0 0 4px}
+h2.sec{font-size:18px;margin:34px 0 10px;padding-top:12px;border-top:1px solid var(--line)}
+.sub{color:var(--ink2);margin:0 0 14px}
+nav{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;margin-bottom:16px}
+nav a{color:var(--a);text-decoration:none}
+.controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px 20px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:16px}
+.abstract{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--a);border-radius:10px;padding:12px 18px;margin:10px 0 18px}
+.abstract p{margin:6px 0}
+.prose{max-width:none}
+.anim-grid{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:760px){.anim-grid{grid-template-columns:1fr}}
+#aPath{width:100%;height:auto;aspect-ratio:1;display:block;background:var(--bg);border:1px solid var(--line);border-radius:8px}
+.anim-ctl{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;font-size:13px;color:var(--muted);margin-bottom:8px}
+.anim-ctl button{font:inherit;padding:4px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink);cursor:pointer}
+.anim-ctl label{display:flex;gap:6px;align-items:center}
+.anim-ctl input[type=range]{width:110px}
+.anim-ctl select{width:auto}
+.anim-status{font-size:13.5px;margin-top:6px;font-variant-numeric:tabular-nums}
+.legend4{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:13px;margin-bottom:10px}
+.legend4 i{display:inline-block;width:22px;height:4px;border-radius:2px;margin-right:6px;vertical-align:middle}
+.legend4 i.dash{background:repeating-linear-gradient(90deg,var(--c) 0 6px,transparent 6px 10px)}
+.panels4{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.panels4 canvas{width:100%;aspect-ratio:1;image-rendering:pixelated;display:block;border:3px solid;border-radius:6px;background:#000}
+.panels4 .lbl{font-size:12.5px;text-align:center;margin-top:3px;color:var(--muted)}
+.anim-flag{font-size:13.5px;padding:6px 10px;border-radius:6px;margin:0 0 8px;border-left:4px solid var(--line);background:var(--panel)}
+.anim-flag.ok{border-left-color:var(--ok);background:var(--okbg)}.anim-flag.warn{border-left-color:var(--warn);background:var(--warnbg)}.anim-flag.bad{border-left-color:var(--bad);background:var(--badbg)}
+.anim-flag a,.fn a{color:var(--a);text-decoration:none}
+.stickwrap .controls{position:sticky;top:0;z-index:6;padding:8px 14px;gap:4px 18px;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));box-shadow:0 6px 16px -10px rgba(0,0,0,.35)}
+.controls .aux{font-weight:400;color:var(--ink2);font-size:12px}
+.controls .aux output{font-weight:600}
+@media (max-width:760px){.stickwrap .controls{position:static}}
+.hint{font-size:12.5px;color:var(--ink2);margin-top:2px;line-height:1.4}
+.hint output{font-weight:600}
+dl.concepts{grid-template-columns:minmax(150px,230px) 1fr;margin-bottom:8px}
+.split4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:12px}
+.split2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:18px;align-items:start}
+@media (max-width:900px){.split4{grid-template-columns:repeat(2,minmax(0,1fr))}.split2{grid-template-columns:1fr}}
+.split4 img,.split2 img{width:100%;height:auto;display:block;background:#fff;border-radius:4px}
+.pc{font-size:14px;color:var(--ink2);margin:6px 0 0;line-height:1.5}
+.pc-box{font-size:14.5px;line-height:1.6;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+ul.caplist{margin:6px 0 4px;padding-left:20px}
+ul.caplist li{margin:3px 0}
+#crossCv{width:100%;height:auto;display:block;background:var(--bg);border:1px solid var(--line);border-radius:8px}
+.xctl label{display:flex;align-items:center;gap:12px;font-size:14px;margin:6px 0}
+.xctl .xl{min-width:125px}
+.xctl input[type=range]{flex:1}
+.xctl output{font-weight:600}
+.padtab{max-width:420px;margin:10px 0}
+.padtab td,.padtab th{text-align:center!important}
+.act-grid{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:18px;align-items:center;margin-bottom:12px}
+@media (max-width:760px){.act-grid{grid-template-columns:1fr}}
+#actChart{width:100%;height:auto;display:block}
+.act-key div{font-size:13.5px;margin:4px 0}
+.act-key i{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:8px;vertical-align:-1px}
+.acttab th.sortable{cursor:pointer;text-decoration:underline dotted}
+.acttab td.sc{white-space:nowrap;color:var(--a);letter-spacing:1px;text-align:center!important}
+.acttab .dim{color:var(--line)}
+.acttab .cat{display:inline-block;color:#fff;border-radius:4px;padding:1px 6px;font-size:11.5px;white-space:nowrap}
+.acttab td:nth-child(3){min-width:220px}
+.lag-ctl{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:6px 18px;font-size:14px;margin-bottom:8px}
+.lag-ctl label{display:flex;flex-direction:column;gap:2px}
+.lag-ctl output{font-weight:600}
+.lag-ctl .presets{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:13px;color:var(--muted)}
+.lag-ctl .presets button{font:inherit;font-size:13px;padding:3px 9px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink);cursor:pointer}
+.lag-key{display:flex;flex-wrap:wrap;gap:6px 22px;font-size:13.5px;margin:2px 0 10px}
+.lag-key i{display:inline-block;width:22px;height:4px;border-radius:2px;margin-right:7px;vertical-align:middle}
+.lag-rows{font-size:14px;display:inline-flex;gap:8px;align-items:center;margin:2px 0 4px}
+.lag-rows select{width:auto}
+.tgt-h{font-size:14.5px;margin:16px 0 6px}
+.tgt-set{font-size:13.5px;margin:0 0 8px;color:var(--ink2)}
+.tgt-note{font-size:13px;color:var(--ink2);margin:6px 0 0}
+table.tgt td,table.tgt th{font-size:13px}
+table.tgt td.g{color:var(--ok);font-weight:600}table.tgt td.w{color:var(--warn);font-weight:600}table.tgt td.r{color:var(--bad);font-weight:600}
+.lag-read{font-size:14.5px;margin:4px 0 10px;font-variant-numeric:tabular-nums}
+.pair2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:760px){.pair2{grid-template-columns:1fr}}
+.pair2 canvas{width:100%;height:auto;display:block;background:var(--bg);border:1px solid var(--line);border-radius:8px}
+.pair2 .lbl{font-size:13px;color:var(--ink2);margin-top:4px}
+.fn{display:block;margin-top:8px;padding-top:8px;border-top:1px solid var(--line);font-size:13.5px}
+.anim-notes{font-size:14px;padding-left:18px;margin:12px 0 0}
+.anim-notes li{margin:4px 0}
+.prose p,.prose li{margin:6px 0}
+h3.ss{font-size:15.5px;margin:22px 0 6px}
+figure.static{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;margin:14px 0}
+figure.static img{width:100%;height:auto;display:block;border-radius:4px;background:#fff}
+table.dt td,table.dt th{text-align:left;vertical-align:top;font-size:14px}
+.eq{font-family:ui-monospace,Consolas,monospace;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 12px;display:inline-block;margin:4px 0}
+.byline{color:var(--muted);font-size:13px;margin:0 0 6px}
+.controls label{display:block;font-size:13px;color:var(--muted)}
+.controls output,.ctl output{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--a)}
+select,input[type=number]{width:100%;padding:4px 6px;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:6px;font:inherit}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 14px;border-left:4px solid var(--line)}
+.tile.ok{border-left-color:var(--ok)}.tile.warn{border-left-color:var(--warn)}.tile.bad{border-left-color:var(--bad)}
+.tile .k{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.tile .v{font-size:22px;font-weight:650;font-variant-numeric:tabular-nums}
+.tile .n{font-size:12px;color:var(--muted)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,500px),1fr));gap:16px;margin-top:16px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+.card.wide{grid-column:1/-1}
+.card h3{font-size:15px;margin:0 0 8px}
+figcaption.cap{font-size:14.5px;color:var(--ink2);margin-top:12px;line-height:1.6}
+figcaption.cap b{color:var(--ink)}
+figcaption.cap .take{display:block;margin-top:6px;color:var(--ink)}
+figure{margin:0}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.pair .lbl{font-size:12px;color:var(--muted);text-align:center;margin-top:4px}
+canvas.img{width:100%;aspect-ratio:1;image-rendering:pixelated;border-radius:6px;display:block;background:#000}
+canvas.chart{width:100%;height:240px;display:block}
+#path,#cov{width:100%;height:auto;display:block}
+.ctl{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px 16px;margin-bottom:10px;font-size:13px;color:var(--muted)}
+.stat{font-size:13px;margin-top:6px;font-variant-numeric:tabular-nums}
+.tblwrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:12.5px;font-variant-numeric:tabular-nums}
+th,td{padding:5px 6px;border:1px solid var(--line);text-align:center}
+th{color:var(--muted);font-weight:500;background:var(--bg)}
+td.ok{background:var(--okbg)}td.warn{background:var(--warnbg)}td.bad{background:var(--badbg)}
+td.cur{outline:2px solid var(--a);outline-offset:-2px;font-weight:650}
+td small{display:block;color:var(--muted);font-size:11px}
+.key{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:8px}
+.key span::before{content:"";display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:5px;vertical-align:-2px;background:var(--c);border:1px solid var(--line)}
+table.f td,table.f th{text-align:left;vertical-align:top;font-size:13px}
+table.f code,dl code,figcaption code{font-family:ui-monospace,Consolas,monospace;font-size:12.5px}
+table.f td:nth-child(2){white-space:nowrap;font-size:15px}
+.eqd{text-align:center;font-size:17px;margin:10px 0;overflow-x:auto}
+mjx-container{color:var(--ink)}
+dl.gl{display:grid;grid-template-columns:minmax(150px,220px) 1fr;gap:8px 18px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:0}
+dl.gl dt{font-weight:600}
+dl.gl dd{margin:0;color:var(--ink2)}
+dl.gl dd b{color:var(--ink);font-weight:600}
+@media (max-width:640px){dl.gl{grid-template-columns:1fr}dl.gl dd{margin-bottom:8px}.controls{position:static}}
+.covgrid{display:grid;grid-template-columns:minmax(0,2.2fr) minmax(160px,1fr);gap:16px;align-items:center}
+@media (max-width:640px){.covgrid{grid-template-columns:1fr}}
+.mini .lbl{font-size:12px;color:var(--muted);text-align:center;margin-top:4px}
+canvas.heat{border:1px solid var(--line)}
+.ramp{height:10px;border-radius:3px;margin-top:8px;background:linear-gradient(90deg,#000004,#420a68,#932667,#dd513a,#fca50a,#fcffa4)}
+.rampk{display:flex;justify-content:space-between;font-size:11px;color:var(--muted)}
+.notes{font-size:14px;color:var(--ink2)}
+.notes li{margin-bottom:4px}
+.row{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--muted)}
+</style>
+<script>window.MathJax={tex:{inlineMath:[['\\(','\\)']],displayMath:[['\\[','\\]']]},svg:{fontCache:'global'}};</script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-svg.min.js"></script>
+</head>
+<body>
+<main>
+<h1>What limits our scan resolution</h1>
+<p class="byline">qt-panda STM · working report · 2026-10-15 · model, interactive calculator and a Sept 24 case study</p>
+<div class="abstract">
+<p><b>Summary.</b> We set out to understand when an STM image stops showing the surface and starts showing noise. Section 1 explains how our firmware builds an image (trace and retrace, Y+ and Y− half-sweeps, continuous Y motion) and what piezo creep and hysteresis do to it. Section 2 models three limits on resolution: <b>sampling</b> (pixels per feature), <b>speed</b> (how fast features pass the tip against the signal chain's bandwidth) and <b>slant</b>. It also shows why about 5–6 pixels per atom spacing are needed before atoms render evenly, not the 2 that Nyquist suggests.</p>
+<p>Section 3 tests these ideas on 1,125 sweeps from the Sept 24 gold run, including a zoom ladder from 30 nm to 0.7 nm on one spot. Neighbouring rows stop agreeing below a window of about 2–5 nm (nominal). The causes, in order of weight: <b>(1)</b> the feedback loop is slower than one scan line, so a lag profile repeated on every row dominates the image (up to 98% of its variance). <b>(2)</b> A row-to-row noise floor of a few pm, made mostly of a ~3 Hz wobble and one tone that appears to come from a Z vibration near 160 or 230 Hz. <b>(3)</b> The surface relief inside a smaller window shrinks until it drops below that floor. Atomic sampling, slant and the lateral calibration are not the limit yet. A robustness check (Section 3.4) confirms the lag result without assuming the artifact is fixed in X: 78–97% of each image flips sign with scan direction, and surface signal repeats from frame to frame only in windows larger than a few nm. Testing the cleanest processed image against the zoom ladder (Section 3.6) shows its main band is fixed in the scan frame, so it isn't surface; the best evidence of real morphology is at 25 nm. The thin streaks carry one tone from a fixed source near 159.5 or 231 Hz (Section 3.7). Section 5 lists the experiments that would confirm each cause.</p>
+</div>
+<nav><a href="#background">1 Background</a><a href="#model">2 Model and calculator</a><a href="#case">3 Case study</a><a href="#robust">3.4 Robustness</a><a href="#clean">3.5 Cleanest image</a><a href="#replicate">3.6 Zoom ladder</a><a href="#tone">3.7 35.9 Hz tone</a><a href="#cross">1.1 Scanner cross</a><a href="#discussion">4 Discussion</a><a href="#sources">4.1 Tone sources</a><a href="#next">5 Action items</a><a href="#formulas">A Formulas</a><a href="#glossary">B Glossary</a><a href="#caveats">C Limitations</a></nav>
+
+<h2 class="sec" id="background">1 · Background: how a scan is built</h2>
+<div class="prose">
+<h3 class="ss">1.1 How the piezo disc moves the tip</h3>
+<p>The scanner is a piezo disc whose top electrode is cut into four pads, like a cross seen from above. The tip hangs from the centre on a stem. The piezo driver turns three DAC signals (X, Y, Z) into four pad voltages: Z + X, Z − X, Z + Y and Z − Y. So the "X axis" is really a <b>see-saw</b>: X raises one end of the X arm and lowers the other, which tilts the disc, and the tilt swings the tip sideways. Y is a second see-saw across the other arm. Z adds the same voltage to all four pads, which lifts or lowers the whole cross without changing its tilt.</p>
+</div>
+<figure class="static" id="cross">
+  <div class="anim-grid">
+    <div><canvas id="crossCv" width="620" height="520"></canvas></div>
+    <div>
+      <div class="xctl">
+        <label><span class="xl">X DAC <output id="scXo"></output> V</span><input id="scX" type="range" min="-5" max="5" step="0.1" value="0"></label>
+        <label><span class="xl">Y DAC <output id="scYo"></output> V</span><input id="scY" type="range" min="-5" max="5" step="0.1" value="0"></label>
+        <label><span class="xl">Z DAC <output id="scZo"></output> V</span><input id="scZ" type="range" min="-5" max="5" step="0.1" value="0"></label>
+        <div class="row" style="gap:10px;margin-top:4px"><label><input type="checkbox" id="scAnim"> animate a scan (X fast, Y slow)</label><button type="button" id="scReset">Centre</button></div>
+      </div>
+      <table class="dt padtab" id="padTab"></table>
+      <ul class="anim-notes">
+        <li><b>Z</b> moves the whole cross up and down; every pad changes by the same amount, so the tilts don't change.</li>
+        <li><b>X</b> see-saws the X arm: Z + X rises while Z − X falls by the same amount. The Y arm doesn't move.</li>
+        <li><b>Y</b> does the same on the other arm, leaving X alone. During a scan X rocks fast (the fast axis) while Y is held almost still and creeps slowly (the slow axis).</li>
+        <li>The tip swings toward the raised side by roughly stem length × tilt angle, which is why a tilt becomes a sideways scan.</li>
+      </ul>
+    </div>
+  </div>
+  <figcaption class="cap"><b>Figure 1. The scanner's three controls as a cross (interactive).</b> Black cross: the four pads in perspective, with the tip and stem hanging from the centre and the sample plane below. Grey dashed cross: the rest position. Labels at the arm ends give each pad's voltage. The yellow dot is where the tip points on the sample; with "animate a scan" on, it leaves a trail showing the raster. Pad voltages use the driver mapping measured on the bench on 2026-10-15: Z full range gives ±10 V at the pads (inverted), X and Y give ±3 V, and they add, up to ±13 V. For example, Z at −10 V plus X at 2.5 V on the DAC read −8.5 V and −11.5 V on the two X pads. Motion is exaggerated, and the direction a positive voltage bends the disc is assumed.
+  <span class="take">Takeaway: X and Y don't push the tip sideways directly; they tilt the disc, and the stem converts tilt into sideways motion. Z shares the same pads. A large Z offset uses up voltage headroom, so X or Y saturates sooner on the side where they add.</span></figcaption>
+</figure>
+<div class="prose">
+<h3 class="ss">1.2 Fast axis, slow axis and the four images</h3>
+</div>
+<figure class="static" id="anim">
+  <div class="anim-grid">
+    <div>
+      <div class="anim-ctl">
+        <button id="aPlay" type="button">Pause</button>
+        <button id="aStep" type="button">Step one line</button>
+        <button id="aReset" type="button">Restart</button>
+        <label>Speed <output id="aSpdOut"></output> lines/s<input id="aSpd" type="range" min="0.25" max="6" step="0.25" value="1"></label>
+        <label>Rows <select id="aRows">
+          <option value="4">4 rows · 1 px per atom</option>
+          <option value="6">6 rows · 1.5 px per atom</option>
+          <option value="8" selected>8 rows · 2 px per atom (Nyquist)</option>
+          <option value="12">12 rows · 3 px per atom</option>
+          <option value="20">20 rows · 5 px per atom ✓</option>
+          <option value="24">24 rows · 6 px per atom ✓</option>
+        </select></label>
+      </div>
+      <div class="anim-flag" id="aFlag"></div>
+      <canvas id="aPath" width="560" height="560"></canvas>
+      <div class="anim-status" id="aStatus"></div>
+    </div>
+    <div>
+      <div class="legend4">
+        <span><i style="background:var(--s1)"></i>Y+ trace (X− → X+)</span>
+        <span><i style="background:var(--s2)"></i>Y+ retrace (X+ → X−)</span>
+        <span><i class="dash" style="--c:var(--s3)"></i>Y− trace</span>
+        <span><i class="dash" style="--c:var(--s4)"></i>Y− retrace</span>
+      </div>
+      <div class="panels4">
+        <div><canvas id="aImg1" width="8" height="8" style="border-color:var(--s1)"></canvas><div class="lbl"><b>Image 1</b> · Y+ trace</div></div>
+        <div><canvas id="aImg2" width="8" height="8" style="border-color:var(--s2)"></canvas><div class="lbl"><b>Image 2</b> · Y+ retrace</div></div>
+        <div><canvas id="aImg3" width="8" height="8" style="border-color:var(--s3)"></canvas><div class="lbl"><b>Image 3</b> · Y− trace</div></div>
+        <div><canvas id="aImg4" width="8" height="8" style="border-color:var(--s4)"></canvas><div class="lbl"><b>Image 4</b> · Y− retrace</div></div>
+      </div>
+      <ul class="anim-notes">
+        <li><b>Trace and retrace:</b> every line goes X− → X+ (blue) and straight back (orange). Both are recorded as separate data streams.</li>
+        <li><b>Y never stops:</b> it creeps up during both passes, so each pass slopes slightly. The retrace runs half a row above its trace, and the next trace starts one row up.</li>
+        <li><b>Y+ then Y−:</b> after the top row, Y reverses and walks back down over the same rows (dashed). The tip never jumps.</li>
+        <li><b>Four images per Y cycle:</b> each colour fills its own image (right). Retrace rows are stored back in X order.</li>
+      </ul>
+    </div>
+  </div>
+  <figcaption class="cap"><b>Figure 2. How one Y cycle of a continuous scan is recorded (animated).</b> Left: the commanded tip path over a schematic surface (grey bumps), with a small number of rows so the motion is visible. Line colour marks the data stream: <span style="color:var(--s1)">blue</span> Y+ trace, <span style="color:var(--s2)">orange</span> Y+ retrace, <span style="color:var(--s3)">teal dashed</span> Y− trace, <span style="color:var(--s4)">red dashed</span> Y− retrace. Dots mark where each pixel is sampled. The previous half-sweep's path fades when Y reverses. Right: the four images filling as the samples arrive, coloured by surface height (dark = valley, yellow = top). Real scans use 128–512 rows, so the slope of each pass is far smaller than drawn here.
+  <span class="take">Takeaway: the live view shows images 1 and 3 drawn into the same rows (shifted by <code>drift_corr_y</code>); the replay tool shows one stream at a time (<code>e_trace</code> by default). All four streams are saved for both Z and error. Replay calls the Y+ half "▲ up" while the live raster calls it the "down sweep", so name the halves Y+ and Y− to avoid confusion. Comparing trace with trace, from the same Y half, is the like-for-like comparison over time.</span>
+  <span class="fn" id="fn1"><sup>1</sup> <b>Rows and resolution.</b> The schematic surface has 4 atoms across, so pixels per atom = rows ÷ 4. At 8 rows (2 px per atom) the scan meets the Nyquist minimum: the atom spacing is recorded, but each atom is sampled at a different offset from its centre, so atoms come out unevenly bright and the image looks noisy (sampling-phase scatter, Figure 9b). Even atoms need about <b>5–6 px per atom spacing</b>, which keeps the scatter under ~15%: choose 20 or 24 rows to see it. Below 2 px per atom (4 or 6 rows) the rows skip over atoms and the image shows a false pattern. Use a higher speed at 20–24 rows, since one Y cycle is 40–48 lines.</span></figcaption>
+</figure>
+<div class="prose">
+<h3 class="ss">1.3 Row pitch and slant</h3>
+<p>Row pitch = scan size ÷ (Pixels/line ÷ 2), the same in X and Y; scans are always square. Because Y moves during the line, each trace row slopes by half a row pitch over its length, and the retrace covers the other half pitch. The tip draws a shallow zigzag, and the next trace starts exactly one pitch above the last. Live view and replay draw rows flat, so the image is sheared by at most half a pixel. Figures 5, 6 and 8 show this.</p>
+<h3 class="ss">1.4 Piezo creep and hysteresis</h3>
+<p>After a voltage change a piezo keeps moving slowly: \(\Delta l(t) = \Delta l_{0.1}\left(1 + \gamma\,\log_{10}\dfrac{t}{0.1\,\mathrm{s}}\right)\), about 1.5% more per tenfold time for a stiff stack (vendor γ ≈ 0.015). Modelling the Y triangle as a sum of small steps predicts an offset between the Y+ and Y− images of about <b>0.8% of the scan size</b>: ≈2 rows at 256 rows, ≈4 at 512. The offset is the same at every line rate, because the log law has no time scale. Hysteresis adds a rate-independent offset of the same sign. That rate-independence separates both from loop lag, which grows with line rate. Our scanner's γ is unknown and could be several times the vendor value. Within a row, X turnarounds (15–50 ms) are below the formula's 0.1 s range.</p>
+<h3 class="ss">1.5 Lateral calibration</h3>
+<p>The nm on every axis label come from <code>piezo_x/y_nm_per_v = 5.0</code>, a placeholder that has never been calibrated. It may well be off by several times; one guess is 4× too small. A wrong calibration scales every nm figure in this report but does not by itself cause images to decohere. Calibration needs a known spacing: graphite atoms (0.246 nm), the Au(111) herringbone (~6.3 nm) or a grating.</p>
+</div>
+
+<h2 class="sec" id="model">2 · Model: three limits on resolution</h2>
+<div class="prose">
+<p>An STM image can lose atoms in three independent ways. Each depends on different settings, so this section models them separately and then combines them. The terms below are used throughout; the glossary (Appendix B) has the full list.</p>
+</div>
+<h3 class="ss">2.1 Concepts</h3>
+<dl class="gl concepts">
+  <dt>Pixel pitch</dt><dd>The distance between neighbouring pixels (and rows): scan size ÷ pixels per row. Smaller pitch = finer sampling.</dd>
+  <dt>Pixels per atom</dt><dd>Atom spacing ÷ pixel pitch. The single most useful number for "can we see atoms?".</dd>
+  <dt>Nyquist minimum (2 px per atom)</dt><dd>With fewer than 2 samples per atom spacing the lattice can't be recorded at all; the image shows a false pattern (aliasing, or moiré).</dd>
+  <dt>5–6 px rule</dt><dd>Between 2 and ~5 px per atom, the lattice is recorded but each atom is hit at a different spot, so atoms look unevenly bright: deterministic "noise" called <b>sampling-phase scatter</b> (Figure 9b). About 5–6 px per atom keeps it under ~15%.</dd>
+  <dt>Tip speed and atom rate</dt><dd>During a trace the tip moves at 2 × scan size × line rate. Dividing by the atom spacing gives how many atoms pass the tip per second, a frequency in Hz.</dd>
+  <dt>Signal bandwidth</dt><dd>The current preamp and the electronics after it smooth the signal like a low-pass filter. Signals faster than the corner frequency (~400 Hz measured) are weakened. If atoms pass faster than that, their contrast fades and they smear along the row.</dd>
+  <dt>Feedback loop and KIGA</dt><dd>In constant-current mode the firmware moves Z to keep the current constant. KIGA is that loop's gain: higher KIGA = faster Z response. The loop's crossover frequency (≈ 15.7 Hz per unit KIGA at the 100 kHz loop rate) is roughly the fastest change it can follow.</dd>
+  <dt>Z image vs error image</dt><dd>Features slower than the loop crossover show up in the Z image (height). Faster ones, such as individual atoms at normal scan speeds, show up only in the error (current) image. After each X turnaround the loop also lags for a while, leaving a "lag tail" along the start of every row.</dd>
+  <dt>Half-sweep</dt><dd>One pass of Y across the whole scan (Y+ or Y−), which produces one complete image. Section 1.2 shows it animated.</dd>
+  <dt>Slant</dt><dd>Because Y moves during each row, every row is tilted by half a row pitch. Harmless at normal row counts (Figures 5, 6 and 8).</dd>
+</dl>
+
+<h3 class="ss">2.2 Settings</h3>
+<p class="sub">The settings bar below stays at the top of the screen while you scroll through Figures 3–8, so you can watch the figures change as you move a slider. It drives every figure in this section except Figure 9, which has its own controls. Defaults match a typical scan: 30 nm, 512 pixels per line, 10 Hz requested.</p>
+<dl class="gl concepts settings-guide">
+  <dt>Scan size</dt><dd>Width of the square scan window.</dd>
+  <dt>Pixels per line</dt><dd>The GUI's "Pixels/line". It counts the trace and retrace together, so the image is half that many pixels wide and the same number of rows tall.</dd>
+  <dt>Line rate</dt><dd>Lines per second requested. The firmware rounds samples per pixel down, so the realized rate (shown in the bar) can differ.</dd>
+  <dt>Line re-scan</dt><dd>Each row scanned N times and averaged. Only changes the time per image.</dd>
+  <dt>Feature</dt><dd>Atom spacing of the surface being imaged.</dd>
+  <dt>Lattice rotation</dt><dd>Angle of the lattice to the scan rows. Affects Figures 4 and 4 only.</dd>
+  <dt>Signal bandwidth</dt><dd>Corner frequency of the preamp and electronics; ~400 Hz measured on Sept 17.</dd>
+  <dt>Feedback gain KIGA</dt><dd>Speed of the constant-current loop. The bar shows the fastest change it can follow. Drives the two feedback tiles and Figure 4's Z / error switch.</dd>
+</dl>
+<div class="stickwrap">
+<div class="controls">
+  <div><label>Scan size <output id="LOut"></output> nm</label><input id="L" type="range" min="0" max="1" step="0.001"></div>
+  <div><label>Pixels per line <output id="PPLOut"></output> <span class="aux">→ <output id="NOut"></output> × <output id="NOut2"></output> px</span></label><input id="PPL" type="range" min="0" max="1" step="0.001"></div>
+  <div><label>Line rate <output id="fOut"></output> Hz <span class="aux">real <output id="frOut"></output></span></label><input id="f" type="range" min="0" max="1" step="0.001"></div>
+  <div><label>Line re-scan</label><select id="lr"><option>1</option><option>2</option><option>4</option><option>8</option><option>16</option></select></div>
+  <div><label>Feature</label><select id="feat">
+    <option value="0.246">Graphite / HOPG, 0.246 nm</option>
+    <option value="0.255">Cu(111), 0.255 nm</option>
+    <option value="0.288">Au(111), 0.288 nm</option>
+    <option value="0.384">Si(111) 1×1, 0.384 nm</option>
+    <option value="0.77">Si(111) 7×7 adatoms, ~0.77 nm</option>
+    <option value="2.69">Si(111) 7×7 cell, 2.69 nm</option>
+    <option value="custom">Custom…</option></select>
+    <input id="aCustom" type="number" step="0.001" min="0.05" value="0.5" style="margin-top:6px;display:none"></div>
+  <div><label>Lattice rotation <output id="rotOut"></output>°</label><input id="rot" type="range" min="0" max="60" step="0.5" value="7"></div>
+  <div><label>Signal bandwidth <output id="fcOut"></output> Hz</label><input id="fc" type="range" min="0" max="1" step="0.001"></div>
+  <div><label>Feedback gain KIGA <output id="kOut"></output> <span class="aux">follows ≤ <output id="xcOut"></output> Hz</span></label><input id="k" type="range" min="0.5" max="10" step="0.1" value="2.3"></div>
+</div>
+<section id="figs">
+<figure>
+  <div class="tiles" id="tiles"></div>
+  <figcaption class="cap"><b>Figure 3. Summary for the current settings.</b> Each tile is one quantity derived from the settings, using the concepts in 2.1. The coloured left edge grades it: <span style="color:var(--ok)">green</span> fine, <span style="color:var(--warn)">amber</span> marginal, <span style="color:var(--bad)">red</span> atoms lost or image distorted. Tiles with no colour are context. Settings feed the tiles as follows: scan size and pixels set the pitch and sampling tiles; scan size and line rate set the tip speed; signal bandwidth sets the contrast kept; KIGA sets the two feedback tiles.
+  <span class="take">Takeaway: atoms appear only if the sampling, uneven-brightness and contrast tiles are all green. Any one in red is enough to lose them. The feedback lag tail is what dominated the Sept 24 images (Section 3): at KIGA 1.14 and 30 Hz lines it covers about 150 px of each 256 px row. Raising KIGA or lowering the line rate shortens it. The slant tile is almost always green, because its angle depends only on the row count.</span></figcaption>
+</figure>
+<div class="grid">
+  <div class="card"><figure>
+    <h3>What the image would show</h3>
+    <div class="pair">
+      <div><canvas id="truth" class="img" width="384" height="384"></canvas><div class="lbl" id="truthCap">True surface</div></div>
+      <div><canvas id="samp" class="img" width="48" height="48"></canvas><div class="lbl" id="sampCap">Simulated scan</div></div>
+    </div>
+    <div class="row" style="margin-top:8px;gap:16px"><span>Show:</span><label><input type="radio" name="ch" id="chE" checked> error (current) image</label><label><input type="radio" name="ch" id="chZ"> Z (height) image</label></div>
+    <figcaption class="cap"><b>Figure 4. Simulated image of an ideal lattice.</b> Both panels show the same window, fixed by the scan size and feature only: the whole scan, or a patch 12 atom spacings wide at its centre when the scan is larger. Pixel and speed settings change only the right panel. Left: the true hexagonal lattice, drawn finely. Right: the same window as the scan would record it, one block per scan pixel. Each pixel averages the surface over its dwell along the row, follows the true slanted path, and is smoothed along the row by a single-pole filter at the signal-chain corner. Bright = atom (high signal), dark = between atoms. The colour scale is fixed, not auto-ranged, so lost contrast shows as a flat, uniform patch. The <b>Show</b> switch picks the channel: the feedback loop (speed set by KIGA) moves Z to follow whatever it can keep up with, and the error image holds the rest.
+    <span class="take">Takeaway: below 2 px per atom spacing the right panel shows a pattern that isn't on the surface (moiré, or aliasing). Rotate the lattice: an aliased pattern changes period and direction, while a resolved lattice just rotates. KIGA only changes this image when atoms pass the tip slower than the loop can follow. At the defaults atoms pass at about 2.5 kHz, far above even KIGA 10 (≈157 Hz), so the Z image stays flat and the atoms are all in the error image. To see KIGA act, set a 5 nm window at about 1.5 Hz (atoms then pass at ~60 Hz) and switch to the Z image: at KIGA 0.5 it stays flat, and at KIGA 10 the atoms appear in Z and fade from the error image.</span></figcaption>
+  </figure></div>
+
+  <div class="card"><figure>
+    <h3>Tip path over the atoms, to scale</h3>
+    <div class="row" style="margin-bottom:6px"><label><input id="exag" type="checkbox"> exaggerate slant ×20</label></div>
+    <svg id="path" viewBox="0 0 500 300"></svg>
+    <figcaption class="cap"><b>Figure 5. Where the samples land relative to the atoms, at the scan centre, to scale.</b> Soft grey discs: atoms of the chosen feature, at the chosen rotation. <span style="color:var(--a)">Blue lines and dots</span>: trace rows (X− → X+) and the pixel positions on them; these dots become the image. <span style="color:var(--b)">Orange dashed lines</span>: the retrace (X+ → X−), half a row pitch above each trace. The window is about 3½ atom spacings tall; the header line gives its size and the pixels per atom.
+    <span class="take">Takeaway: compare the dot spacing with the atom spacing. Dots several per atom means the lattice is sampled; dots further apart than atoms means rows step over atoms. The slant is too small to see unless exaggerated.</span></figcaption>
+  </figure></div>
+
+  <div class="card"><figure>
+    <h3>Slant angle vs rows</h3>
+    <canvas id="slant" class="chart"></canvas>
+    <figcaption class="cap"><b>Figure 6. Slant angle against row count.</b> <span style="color:var(--a)">Blue curve</span>: angle = atan(1 ÷ (2 × rows)), log scales on both axes. <span style="color:var(--b)">Orange dot</span>: the current setting.
+    <span class="take">Takeaway: scan size doesn't appear. Y moves half a row pitch while X moves a full row, and both scale with scan size, so it cancels. Above about 32 rows the slant is under 1°, and at 256 rows it's 0.11°.</span></figcaption>
+  </figure></div>
+
+  <div class="card"><figure>
+    <h3>Contrast vs line rate at this scan size</h3>
+    <canvas id="speed" class="chart"></canvas>
+    <figcaption class="cap"><b>Figure 7. Atomic contrast surviving, against requested line rate.</b> <span style="color:var(--ok)">Green curve</span>: chain attenuation (single pole at the corner) × pixel averaging, in % of the true contrast. Gridlines at 15% and 50% mark the marginal and resolved thresholds. <span style="color:var(--b)">Orange dot</span>: the current setting. Small steps in the curve come from samples per pixel being rounded down.
+    <span class="take">Takeaway: halving the line rate halves the tip speed, and so halves the rate at which atoms pass the tip. Once atoms pass at well under the chain corner, slowing down further gains little.</span></figcaption>
+  </figure></div>
+
+  <div class="card wide"><figure>
+    <h3>Which scan windows resolve this feature</h3>
+    <div class="tblwrap"><table id="tbl"></table></div>
+    <div class="key"><span style="--c:var(--okbg)">resolved: ≥4 px per spacing and ≥50% contrast</span><span style="--c:var(--warnbg)">marginal: 2–4 px or 15–50%</span><span style="--c:var(--badbg)">lost or aliased: &lt;2 px or &lt;15%</span></div>
+    <figcaption class="cap"><b>Figure 8. Resolution map over scan size and Pixels/line, at the chosen line rate and chain corner.</b> Each cell shows the pixel pitch, then pixels per atom spacing · contrast surviving. Cell colour is the worse of the sampling and speed grades. Blue outline: the current setting.
+    <span class="take">Takeaway: moving right (more pixels) fixes sampling but not speed, since the tip speed doesn't depend on pixel count. Moving up (smaller window) fixes both. That's why atomic imaging uses small windows rather than just more pixels.</span></figcaption>
+  </figure></div>
+</div>
+</section>
+</div>
+
+<h3 class="ss" id="coverage">2.3 Coverage and sampling phase (own controls)</h3>
+<div class="grid">
+  <div class="card wide" id="cover"><figure>
+    <h3>Coverage viewer: which atoms does a slanted scan miss?</h3>
+    <div class="ctl">
+      <div>Atoms per side <output id="cnOut"></output><input id="cn" type="range" min="3" max="12" step="1" value="5"></div>
+      <div>Rows across the window <output id="crOut"></output><input id="cr" type="range" min="2" max="40" step="1" value="5"></div>
+      <div>Slant<select id="cm">
+        <option value="fw">Firmware (½ row over each row)</option>
+        <option value="x">Firmware, exaggerated</option>
+        <option value="45">Steep example: 1 row per pixel (45°)</option></select></div>
+      <div id="cxWrap">Exaggeration ×<output id="cxOut"></output><input id="cx" type="range" min="1" max="40" step="1" value="10"></div>
+    </div>
+    <div class="covgrid">
+      <svg id="cov" viewBox="0 0 640 420"></svg>
+      <aside class="mini">
+        <canvas id="covImg" class="heat" width="360" height="360" style="width:100%;aspect-ratio:1;display:block;border-radius:6px"></canvas>
+        <div class="lbl"><b style="color:var(--ink)">Reconstructed image</b>: one block per blue dot, coloured by the signal at that dot, rows drawn flat</div>
+        <label class="row" style="justify-content:center;margin-top:4px"><input id="covNums" type="checkbox"> show sample values (%)</label>
+        <div class="anim-flag" id="covFlag" style="margin-top:8px"></div>
+        <div class="ramp"></div>
+        <div class="rampk"><span>miss (valley)</span><span>strong hit (atom top)</span></div>
+        <canvas id="covTruth" class="heat" width="120" height="120" style="width:45%;aspect-ratio:1;display:block;margin:10px auto 0;border-radius:6px"></canvas>
+        <div class="lbl">True surface (for comparison)</div>
+      </aside>
+    </div>
+    <div class="stat" id="covStat"></div>
+    <figcaption class="cap"><b>Figure 9. Area covered by a slanted row scan, treating the window as the whole scan.</b> Dashed square: the area the image claims to show. <span style="color:var(--a)">Blue bands</span> (alternating shades): the strip each row covers, one row pitch tall, tilted by the slant. Blue dots: pixel centres on each trace. <span style="color:var(--ok)">Filled green circles</span>: atoms inside the scanned area. <span style="color:var(--bad)">Hollow red circles</span>: atoms inside the square but outside every band. A square atom grid is used here for clarity. <b>Side panel:</b> the image those sample points would produce. Each blue dot becomes one pixel, coloured by surface height at that point (dark = valley between atoms, red to yellow = over an atom), and each row is drawn flat, the way live view and replay reconstruct it. Below it is the true surface for comparison; tick "show sample values" to print each block's value.
+    <span class="take">Takeaway: adjacent bands always touch, because each row starts exactly one pitch above the last, so a slant never leaves gaps between rows. It only turns the square into a parallelogram: a sliver up to half a row tall goes missing at the bottom right, and an equal sliver is gained above the top right. Atoms whose centres sit in that sliver (the hollow red circles) aren't scanned in this frame. In exchange, the sliver above the top right picks up atoms from just outside the square, so the image's right edge is shifted up by up to half a pixel. With the 45° example, half the square would be missed. In the side panel, compare the dot spacing with the atom spacing: rows that land between atom rows give dark stripes, and rows that run along atom tops give bright ones. That's sampling, which matters far more than the slant.</span></figcaption>
+  </figure></div>
+
+  <div class="card wide"><figure>
+    <h3>Peak-capture scatter: when a regular lattice starts to look noisy</h3>
+    <canvas id="phase" class="chart" style="height:260px"></canvas>
+    <figcaption class="cap"><b>Figure 9b. Atom-to-atom brightness scatter against pixels per atom spacing.</b> <span style="color:var(--a)">Blue curve</span>: worst-case loss of an atom's peak brightness, \(1 - \exp\!\left(-\dfrac{(p/a)^{2}}{4\sigma^{2}}\right)\). That's the loss when the nearest sample sits half a pixel off the atom centre in both X and Y. The atom is modelled as a Gaussian bump of width σ = 0.22 a. Green, amber and red bands: under 15%, 15–30% and over 30% scatter. <span style="color:var(--b)">Orange dot</span>: the Figure 9 setting. <span style="color:var(--ok)">Green dot</span>: the calculator setting. Open circles: two worked examples, 4 atoms / 23 rows (5.75 px, 9% measured) and 7 atoms / 23 rows (3.29 px, 32% measured).
+    <span class="take">Takeaway: each atom is sampled at a different offset from its centre, because the pixel grid and the lattice don't line up. That offset (the <b>sampling phase</b>) walks from atom to atom. When pixels per atom isn't a whole number, it cycles with a beat period of 1 ÷ (its fractional part) atoms. Some atoms get a sample on their peak and look bright; others only get their flanks and look dim. The result looks like noise, but it's deterministic: it repeats exactly when the scan is repeated, and averaging frames or line re-scan won't remove it. Only finer sampling does. About 5–6 px per spacing keeps it under 15%; Nyquist's 2 px only guarantees the period is detectable.</span></figcaption>
+  </figure></div>
+</div>
+
+<h2 class="sec" id="case">3 · Case study: Sept 24 gold, zooming in on one spot</h2>
+<div class="abstract" id="verdict">
+<p><b>Where the evidence landed (read this first).</b> This section records the analysis in the order it was done, and some early readings were revised by later tests. The conclusions that stand:</p>
+<ul>
+<li><b>The large-window images show real surface.</b> At about 25 nm and up, features repeat from frame to frame, survive averaging the two scan directions, and scale correctly when the window shrinks. The ledge seen while zooming in at 25–30 nm is real.</li>
+<li><b>The zoom works.</b> For every window pair down to 10.5 nm, every frame fits the commanded zoom better than no zoom. Where the ratio can be measured, it is within about 5–10% of the command (Section 3.6a).</li>
+<li><b>The 10.5 nm image in Figure 17 G is not a good surface image.</b> It looks clean and repeats perfectly, but two-thirds of it is the leftover lag pattern. Repeating is not the same as real.</li>
+<li><b>Below about 10 nm, the instrument dominates the picture.</b> The feedback loop is slower than one scan line, so Z trails the tip and leaves the same U-shaped lag profile in every row (Figures 14 and 14b). It repeats perfectly, so it looks crisp and stable, but it is fixed to the scan, not the sample. The dark band in Figure 16 G is mostly this.</li>
+<li><b>Real surface signal at small windows is small, not absent.</b> It falls with window size until row-to-row noise matches it, at about 2–5 nm (Figure 11). Fixing the loop (faster KIGA, slower lines) should lower that limit; Section 5 lists the tests.</li>
+</ul>
+</div>
+
+<div class="prose">
+<h3 class="ss">3.1 Data</h3>
+<p>The Sept 24 "real run" (19:06–20:01): gold sample, a tip the operator marked good, preamp 1X, firmware 5.6 with a 100 kHz control loop, KIGA 1.1444 (integrator crossover ≈ 18 Hz), constant current on. It contains 1,125 complete sweeps, including a <b>zoom ladder</b> from 19:06 to 19:11 that steps from 30 nm down to 0.73 nm on one spot at 256 px. Sweep numbers are as shown by the day's sweep player (#665 = 19:06:18).</p>
+<p><b>Line-rate correction.</b> The scan files record only the line rate requested at the start, but the journal shows it was changed during the run. Rebuilding the realized rate for every sweep from the journaled commands (using the firmware's own rounding) agrees with the sweeps' timestamps for 97% of them. Only the first ladder step (30 nm) ran at 32.55 Hz; <b>every later step ran at 195.3 Hz</b>. The 50 nm scans that requested 97.66 Hz also ran at 195.3 Hz: in floating point, 97.66 Hz × 512 px rounds samples per pixel down from 2 to 1, doubling the rate. The scan notes for that day give 97.66 Hz and should be corrected.</p>
+<h3 class="ss">3.2 Methods</h3>
+<p>Each sweep's Z trace image has every row's offset and slope removed. Three measures are then taken:</p>
+<ul>
+<li><b>Pixel-locked fraction</b>: the share of image variance in the average row profile, i.e. content that is identical at the same X in every row. Figure 11 shows what this removes and what it keeps.</li>
+<li><b>Adjacent-row correlation r</b>: after the average row profile is subtracted, how alike each row is to the next. Surface structure that changes slowly with Y gives r near 1; noise that is independent from row to row gives r near 0.</li>
+<li><b>Slow-axis spectra</b>: each column, sampled once per line, is a time series at the realized line rate. Its spectrum shows what the row-to-row noise is made of.</li>
+</ul>
+<p>Z values are converted with the placeholder Z calibration (3 nm/V), so pm figures are relative.</p>
+</div>
+
+<figure class="static">
+<img src="report/fig8_ladder.png" alt="Zoom ladder from 30 nm to 0.73 nm, as recorded and with the repeated row profile removed">
+<figcaption class="cap"><b>Figure 10. The zoom ladder, 19:06–19:11.</b> Eleven sweeps of the same spot, each labelled with its sweep number, realized line rate, scan size and pixel pitch. <b>Row A</b>: Z trace with each row levelled. <b>Row B</b>: the same image after the average row profile is subtracted. Below each B panel: the pixel-locked fraction and adjacent-row correlation r. Colour: inferno, 1–99% stretch per panel, so brightness is relative within a panel only.
+<span class="take">Takeaway: at 30 and 24.8 nm, row B still shows 2D structure (r ≈ 0.97–0.98). From 12.7 nm down, row A is dominated by a dark vertical valley at the same place in the frame (≈35–40% across), through a 4.6× zoom. A surface feature would move and grow as the window shrinks; this one stays fixed in pixels, so it is tied to timing within the line, not to the sample. Once it is removed, the remaining structure turns to horizontal streaks below about 5 nm (r ≈ 0.2–0.4).</span></figcaption>
+</figure>
+
+<figure class="static">
+  <h3 class="ss" style="margin-top:0">Figure 11. Splitting one sweep into "the same on every row" and "what's left"</h3>
+  <p class="prose" style="margin:0 0 10px">Sweep #741 (10.5 nm window, Z channel). Panel 1 is the recorded image. Panel 2 is built from a single line, the average of all 256 rows, repeated on every row. Panel 3 is panel 1 minus panel 2. So panel 1 = panel 2 + panel 3, exactly. Panels 1–3 share one colour scale, so their brightness can be compared directly. <b>Assumption:</b> calling panel 2 "the artifact" assumes the artifact sits at the same X in every row. The valley in panel 1 actually tilts slightly toward the bottom left, so that assumption is only approximate. Section 3.4 tests it with a method that doesn't need it, and confirms the main result.</p>
+  <div class="split4">
+    <div><img src="report/f10_real_recorded.png" alt="Sweep 741 as recorded"><p class="pc"><b>1 · As recorded.</b> A dark valley runs top to bottom about 35–40% across. It looks like a groove on the surface.</p></div>
+    <div><img src="report/f10_real_profile.png" alt="Average row repeated on every row"><p class="pc"><b>2 · The same on every row.</b> One average row, repeated. It already reproduces almost all of panel 1: <b>97% of the image's variance</b>.</p></div>
+    <div><img src="report/f10_real_left_same.png" alt="What is left, same colour scale"><p class="pc"><b>3 · What's left, same scale.</b> Nearly flat. Its amplitude is 0.8 pm rms against 4.8 pm for the recorded image, about one sixth.</p></div>
+    <div><img src="report/f10_real_left_stretched.png" alt="What is left, stretched"><p class="pc"><b>4 · Panel 3, contrast stretched ×6.</b> Now visible: a faint copy of the valley that shifts a few pixels between top and bottom, a few patches spanning many rows (bottom left), and thin single-row streaks.</p></div>
+  </div>
+  <div class="split2">
+    <div><img src="report/f10_real_rows.png" alt="Three rows and the average row"><p class="pc"><b>5 · Three rows (blue shades) and the average row (black).</b> The valley sits at the same X in every row, which is why averaging the rows keeps it.</p></div>
+    <div class="pc-box"><b>How to read this.</b> Panel 1 looked like morphology, but panel 2 shows it is almost entirely one shape repeated identically on every row. A surface groove would move and change width when the window is zoomed. This valley stays at the same pixel position through a 4.6× zoom (Figure 10), so it comes from the timing of each line, most likely the feedback loop lagging after each X turnaround, not from the sample.<br><br><b>Is panel 4 good or bad?</b> It's the honest picture of what this sweep recorded about the surface: very little. Structure that spans many consecutive rows (the bottom-left patches, the slow shift of the valley) changes smoothly with Y, so it is real surface or slow drift. Thin streaks one row tall are noise. Here neighbouring rows still mostly agree (r = 0.88), so some real structure survives, but its amplitude is about one sixth of the lag artifact. The takeaway is that most of what panel 1 appears to show isn't surface.</div>
+  </div>
+  <figcaption class="cap"><span class="take">Takeaway: removing the shape shared by every row deletes the feedback-lag artifact and keeps everything that differs from row to row. On Sept 24 at 10.5 nm, that artifact was 97% of the image.</span></figcaption>
+</figure>
+
+<figure class="static">
+  <h3 class="ss" style="margin-top:0">Figure 11b. Check on a made-up image: does the removal delete real features?</h3>
+  <p class="prose" style="margin:0 0 10px">A synthetic image with a known answer: a valley-and-peak shape present in every row (standing in for the lag artifact), one round bump that only some rows cross (standing in for a real surface feature), and a little noise. Panels 1–3 share one colour scale.</p>
+  <div class="split4">
+    <div><img src="report/f10_syn_recorded.png" alt="Synthetic image as recorded"><p class="pc"><b>1 · As "recorded".</b> The repeated shape plus the bump at right.</p></div>
+    <div><img src="report/f10_syn_profile.png" alt="Synthetic average row repeated"><p class="pc"><b>2 · The same on every row.</b> The average row repeated. The bump barely shows, because only about a fifth of the rows contain it.</p></div>
+    <div><img src="report/f10_syn_left.png" alt="Synthetic image after removal"><p class="pc"><b>3 · What's left.</b> The repeated shape is gone and the bump is intact.</p></div>
+    <div><img src="report/f10_syn_rows.png" alt="Synthetic rows and average"><p class="pc"><b>4 · Two rows and the average row.</b> Row 70 has the peak–valley–peak plus the bump; row 20 misses the bump. The average follows the shared part only.</p></div>
+  </div>
+  <figcaption class="cap"><span class="take">Takeaway: a peak, valley or bump inside a row is kept unless every row has it at the same X. The only real feature this removal would delete is a perfectly straight edge running exactly along Y through the whole frame. Figure 10's zoom test rules that out for the Sept 24 valley.</span></figcaption>
+</figure>
+
+<figure class="static">
+<img src="report/fig10_coherence.png" alt="Adjacent-row correlation against scan window with model fits" style="max-width:780px">
+<figcaption class="cap"><b>Figure 12. Row-to-row coherence against scan window, all sweeps at the two most-used line rates.</b> Dots: one per sweep (<span style="color:var(--a)">blue</span> 195.3 Hz lines at 256 px; <span style="color:var(--b)">orange</span> 130.2 Hz lines at 128 px). Lines: the model r = 1 / (1 + (\(L_c\) / L)^(2α)), fitted separately to each rate. Dotted verticals: \(L_c\), the window at which r = ½. Dashed horizontal: r = ½.
+<span class="take"><b>What the figure shows.</b> Smaller windows give less coherent rows, at both line rates. \(L_c\), the window where r = ½, is about 2.1 nm for the 195 Hz / 256 px sweeps and 4.8 nm for the 130 Hz / 128 px sweeps (nominal nm; ×4 if the calibration guess is right). The two rates also differ in pixel count and samples per pixel, so this pair alone can't say whether rate or pixels made the difference.</span>
+<span class="take"><b>Why speed isn't the cause of this curve.</b> Most of the zoom ladder ran at one line rate (195 Hz). As the window shrank, the tip slowed down 34× (same lines per second, shorter lines), yet coherence got worse, not better. So the fall in r is driven by the window: there's less surface relief left to measure against a fixed noise floor.</span>
+<span class="take"><b>Where line rate does matter: the feedback lag.</b> r is measured after the repeated lag profile is removed, so it hides the main cost of fast lines. That cost shows in the share of each image taken by the lag profile:</span>
+</figcaption>
+<div class="tblwrap" style="margin-top:8px"><table class="dt" style="max-width:900px">
+<tr><th>Realized line rate</th><th>Windows</th><th>Sweeps</th><th>Row coherence r (median)</th><th>Image taken by lag profile (median)</th></tr>
+<tr><td>32.6 Hz</td><td>30 nm</td><td>18</td><td>0.98</td><td>52%</td></tr>
+<tr><td>65.1 Hz</td><td>25 nm</td><td>5</td><td>0.97</td><td>64%</td></tr>
+<tr><td>130 Hz (128 px)</td><td>8–20 nm</td><td>130</td><td>0.85</td><td>56%</td></tr>
+<tr><td>195 Hz</td><td>8–20 nm</td><td>51</td><td>0.84</td><td>96%</td></tr>
+<tr><td>195 Hz</td><td>45–50 nm</td><td>515</td><td>0.80</td><td>57%</td></tr>
+<tr><td>390 Hz (128 px)</td><td>8–20 nm</td><td>28</td><td>0.79</td><td>79%</td></tr>
+</table></div>
+<p class="cap" style="font-size:14.5px;color:var(--ink2);margin-top:10px"><b>Was the speed fine?</b> No. Every sweep on Sept 24 ran at 33–390 Hz lines, and most at 195 Hz. At KIGA 1.14 the loop needs about 9 ms to respond, longer than a whole line at 195 Hz (5.1 ms), so Z never caught up within a row. The slowest sweeps (33–65 Hz, large windows) had the most coherent rows (r ≈ 0.97–0.98). At 195 Hz the lag profile took up to 96% of the image at 8–20 nm. These comparisons mix windows, pixel counts and times, so they are indicative, not a controlled test.<br>
+<b>Recommendation: slower lines are better with this loop.</b> To keep the lag tail under ~5% of a 256 px row, the line rate must be about 3 Hz at KIGA 1.14, or about 10 Hz if KIGA is raised to ~4.6. Faster than that, the image mostly shows the loop rather than the surface. The settings calculator (Section 2, "Feedback lag tail" tile) computes this for any setting, and the KIGA and line-rate sweeps in Section 5 are the controlled test.</p>
+</figure>
+
+<figure class="static">
+<img src="report/fig11_spectra.png" alt="Slow-axis noise spectra at three line rates">
+<figcaption class="cap"><b>Figure 13. What the row-to-row noise is made of, measured in sub-nm windows where the surface contributes almost nothing.</b> <b>Top</b>: spectrum of the row offsets (each row's mean height), normalised to its median, at 195.3, 130.2 and 390.6 Hz lines. Dotted line: 3.05 Hz. <b>Bottom</b>: spectrum of the within-row shape (offset and slope removed) in pm²/Hz, placeholder Z calibration. Frequency resolution is 0.5–1.5 Hz depending on the line rate.
+<span class="take">Takeaway: the row offsets wobble at ~3 Hz, at the same frequency in Hz at all three line rates, so it is a physical motion and not a sampling effect. It matches the 3.05 Hz line seen with the loop open during approach. The within-row shape noise is one sharp tone: 35.1 Hz at 195.3 Hz lines and 29.5 Hz at 130.2 Hz lines. A tone sampled once per row folds to |F − k·f_line|, and a single Z vibration near <b>160 Hz</b> (or 230 Hz) folds to both observed values. That band holds the 100–300 Hz resonance already suspected. Mains is ruled out: 60 Hz would fold to 5.1 Hz and 60 Hz respectively.</span></figcaption>
+</figure>
+
+<div class="prose">
+<h3 class="ss">3.3 Results</h3>
+<ul>
+<li><b>Real 2D structure survives only in windows of about 10 nm or more</b> (r ≥ 0.85). It is gone below about 2–5 nm, depending on line rate and pixel count.</li>
+<li><b>The repeated row profile dominates mid-size windows</b>: 78–98% of image variance from 12.7 to 2.8 nm.</li>
+<li><b>The Z channel barely follows the surface.</b> Z varies by only ~4–6 pm rms even across 45–50 nm of gold, where monatomic steps are 235 pm. This fits the earlier finding that Z carried only tilt and the morphology sat in the error channel.</li>
+<li><b>The noise floor is not white.</b> It is a ~3 Hz row wobble plus one tone that appears to come from 160 or 230 Hz, at a few pm rms in total.</li>
+<li><b>No lattice periodicity</b> was found in any sweep's 2D spectrum. The strongest peaks were either at the lowest frequencies searched or at fixed row periods that trace back to the tones above.</li>
+</ul>
+</div>
+
+<h3 class="ss" id="robust">3.4 Robustness check: is the valley surface or instrument?</h3>
+<div class="prose">
+<p>The decomposition in Figure 11 assumes the artifact is identical at the same X in every row. Two independent tests, run on the same recorded data, avoid that assumption.</p>
+<ul>
+<li><b>Trace against retrace.</b> Every row is scanned in both directions. A surface feature looks the same whichever way the tip moves. Feedback lag does not: the loop trails behind in the direction of travel, so its error flips sign when the direction flips. Averaging the two directions, S = (trace + retrace) / 2, keeps the surface and cancels the lag. Half the difference, L = (trace − retrace) / 2, keeps the direction-dependent part.</li>
+<li><b>Repeat frames.</b> The ladder recorded many sweeps at each window, ~1.3 s apart. Real surface structure repeats from one frame to the next; noise doesn't. Each frame is compared with the next frame of the same Y direction (~2.6 s later), so hysteresis is the same in both.</li>
+</ul>
+</div>
+
+<figure class="static">
+<img src="report/f13_trace_retrace.png" alt="Average row profiles of trace and retrace at 10.5 nm">
+<figcaption class="cap"><b>Figure 14. The valley flips with scan direction.</b> Average row profile of the trace (<span style="color:var(--a)">blue</span>) and the retrace put back in X order (<span style="color:var(--b)">orange</span>), for sweep #741 (left) and for all Y+ and all Y− sweeps at 10.5 nm (middle, right). Dotted blue: the trace mirrored left to right, which is what a lag tied to the X turnaround would look like.
+<span class="take">Takeaway: the retrace is almost exactly the trace turned upside down at the same X (correlation −0.98 in both Y halves). A surface groove would look the same in both directions. So the valley is direction-dependent: the feedback loop trailing behind the tip, which lasts the whole pass because the loop (~9 ms) is slower than a line (5.1 ms). This is the result Figure 11 assumed, now shown without that assumption.</span></figcaption>
+</figure>
+
+<div class="prose" id="lag">
+<h3 class="ss">3.4a Feedback lag, step by step</h3>
+<p>Figure 14 showed that the valley in the 10.5 nm images flips between the outward and return passes. The mechanism is the feedback loop. In constant-current mode the firmware moves Z up and down to hold the tunnel current steady, the way a driver steers to stay in lane. That only works if the steering is faster than the road bends. The loop's speed is set by KIGA; at the Sept 24 setting (1.14) it needs about 9 ms to respond. A line at 195 lines per second lasts 5.1 ms, out and back. So within one line the loop barely reacts. Z only follows slow changes from one row to the next, and inside each row it trails the tip: behind in one direction on the way out, behind in the other direction on the way back.</p>
+<p>When each row is then levelled for display (its offset and tilt removed), that trailing leaves a smooth U on the outward pass and an upside-down U on the return pass, at the same place in every row. The shape depends only on how the loop's response time compares with the line time. It doesn't depend on what is under the tip, which is why it looks identical in every frame and stays put in the frame when you zoom.</p>
+<p>Figure 14b reproduces this from first principles. It runs the same kind of loop as the firmware (an integrator that closes the gap between Z and the surface at a rate set by KIGA) over one row of a made-up surface, repeated until it settles. Change the line rate, KIGA or the window, and the U either stays or disappears. The presets show the Sept 24 settings and the fixes proposed in Section 5.</p>
+</div>
+
+<figure class="static" id="lagfig">
+  <div class="lag-ctl">
+    <div class="presets"><span>Presets:</span>
+      <button type="button" data-p="sep24">Sept 24: 195 lines/s, KIGA 1.14</button>
+      <button type="button" data-p="slow">Slower lines: 10 lines/s</button>
+      <button type="button" data-p="fast">Faster loop: KIGA 9</button>
+      <button type="button" data-p="both">Both: 10 lines/s, KIGA 4.6</button>
+      <button type="button" data-p="big">Sept 24 at 25 nm</button>
+    </div>
+    <label><span>Line rate <output id="lgFlO"></output> lines/s</span><input id="lgFl" type="range" min="0" max="1" step="0.0001"></label>
+    <label><span>KIGA <output id="lgKO"></output></span><input id="lgK" type="range" min="0" max="1" step="0.0001"></label>
+    <label><span>Window <output id="lgWO"></output> nm</span><input id="lgW" type="range" min="0" max="1" step="0.0001"></label>
+    <label><span>Surface tilt <output id="lgTO"></output> pm/nm</span><input id="lgT" type="range" min="0" max="2" step="0.05" value="0.9"></label>
+    <label><span>Bump height <output id="lgBO"></output> pm (1.2 nm wide)</span><input id="lgB" type="range" min="0" max="10" step="0.5" value="4"></label>
+  </div>
+  <label class="lag-rows">Rows per image <select id="lgN"><option>128</option><option selected>256</option><option>512</option></select></label>
+  <div class="lag-read" id="lgRead"></div>
+  <div class="lag-key">
+    <span><i style="background:var(--ink)"></i><b>Black: true surface</b> (what the tip should follow; made up for the simulation)</span>
+    <span><i style="background:#2f6fd0"></i><b>Blue: trace</b> (X− → X+, the way out). Recorded; shown in images by default</span>
+    <span><i style="background:#e0782f"></i><b>Orange: retrace</b> (X+ → X−, the way back). Also recorded</span>
+  </div>
+  <div class="pair2">
+    <div><canvas id="lgA" width="620" height="300"></canvas><div class="lbl"><b>A</b> · one scan line: the surface (black) and where Z actually is on the way out (blue) and back (orange)</div></div>
+    <div><canvas id="lgB2" width="620" height="300"></canvas><div class="lbl"><b>B</b> · the same two passes after each row is levelled, as the image shows them</div></div>
+  </div>
+  <h4 class="tgt-h">What these settings mean for the targets this report expects to resolve</h4>
+  <div class="tgt-set" id="lgSet"></div>
+  <div class="tblwrap"><table class="dt tgt" id="lgTgt"></table></div>
+  <p class="tgt-note">Time per image = rows ÷ the line rate the firmware actually runs (one Y half-sweep, line re-scan off). Lag tail = loop response time × tip speed, as a share of each row. Drift shear = how far the sample drifts during one image, as a share of the window, for an assumed lateral drift of 20–60 pm/s (the rough Sept 24 range; Section 4). Pixels per feature uses the 5–6 px rule from Section 2. Not included: the signal-bandwidth limit on atomic contrast (Section 2, Figure 3), which also favours slow lines for atoms. All sizes are nominal nm (uncalibrated piezo).</p>
+  <figcaption class="cap"><b>Figure 14b. Feedback lag, simulated (interactive).</b> A single scan row is repeated until the loop settles; the made-up surface is a tilt plus one 1.2 nm-wide bump. The loop's response time is 1 ÷ (2π × 15.7 Hz × KIGA), the conversion used throughout this report (about 9 ms at KIGA 1.14). "Z follows" is the share of the surface's height change along the row that Z actually reproduces. "Lag tail" is how far the tip travels during one loop response time, in pixels of a 256-pixel row.
+  The table under the plots turns the chosen settings into time per image and quality for the targets this report expects to resolve. Green: fine (≥5 px per feature, lag tail ≤5% of a row, drift shear ≤5%); amber: marginal; red: the image will be dominated by that problem.
+  <span class="take">Takeaway: at the Sept 24 settings Z follows essentially none of the in-row surface, and panel B shows the U and upside-down U measured in Figure 14. Each fix alone helps only partly. Slower lines (10 per second) let Z follow about half the surface: the bump appears, but shifted about 20 pixels in opposite directions on the two passes. A faster loop alone (KIGA 9 at 195 lines per second) reaches only about 17%. Together (10 per second, KIGA 4.6) Z follows about 80% and the lag tail shrinks to about 11 pixels. That is why the KIGA sweep and slower lines are the top two action items in Section 5, and why they should be tested together.</span></figcaption>
+</figure>
+
+<div class="prose">
+<h3 class="ss">3.4b Why the lag wins in small windows but not in large ones</h3>
+<p>The line rate was the same (195 lines per second) for every window of the Sept 24 zoom ladder, so the lag was present in every image. What changes as the window shrinks is how much real surface is left to compete with it. A 25 nm window contains large height changes, such as hills and ledges spanning many rows. The loop can't follow them within a row, but it does follow them slowly from one row to the next, so they build up in the image. A 5–10 nm window is a smaller, flatter patch: there is much less height change left in it. The lag pattern stays roughly the same size, because its size is set by the loop and the line timing, not by the window.</p>
+<p><b>How Figure 14c was derived.</b> For each window of the concentric ladder (19:08–19:13, 195 lines per second, 256 pixels), all frames at that window were processed the same way as Figure 17 G: trace and retrace averaged (which cancels the part of the lag that flips with scan direction), each row's offset and tilt removed, then all frames averaged. Each averaged image was then split in two:</p>
+<ul>
+<li><b>Lag part</b>: the average of all rows, repeated on every row. This is everything that sits at the same place in every row; Section 3.6 shows it stays fixed in the frame when zooming, so it is instrument, not sample.</li>
+<li><b>Surface part</b>: everything else, which changes from row to row. Section 3.6 shows it moves and scales with the sample at 25 nm.</li>
+</ul>
+<p>The bar heights are the root-mean-square size of each part in picometres (placeholder Z calibration). The two parts add up to the whole image exactly. Limitation: anything real that happens to run straight along the slow axis through the whole window would be counted as lag; the zoom test in Section 3.6 is what separates the two.</p>
+</div>
+
+<figure class="static" id="competition">
+<img src="report/f13c_competition.png" alt="Surface part against lag part in the cleaned image, for four windows" style="max-width:820px">
+<figcaption class="cap"><b>Figure 14c. Which pattern wins, by window.</b> Green: the part of the cleaned image that changes from row to row (moves with the sample). Grey: the part identical in every row (fixed in the frame: leftover lag). Numbers are pm rms.
+<span class="take">Takeaway: at 24.8 nm the surface is twice the size of the leftover lag, and the image shows real morphology. From 12.7 nm down the lag is bigger, and the image mostly shows the instrument. The cut-over sits between about 25 and 13 nm on Sept 24. Shrinking the grey bars with a faster loop or slower lines (Figure 14b) would move that cut-over to smaller windows.</span></figcaption>
+</figure>
+
+<figure class="static">
+  <h3 class="ss" style="margin-top:0">Figure 15. Sweep #741 split by scan direction instead of by rows</h3>
+  <p class="prose" style="margin:0 0 10px">Panels 1–4 share one colour scale. Trace = S + L and retrace = S − L, exactly.</p>
+  <div class="split4">
+    <div><img src="report/f14_T.png" alt="Trace"><p class="pc"><b>1 · Trace</b> (X− → X+). Same image as Figure 11, panel 1.</p></div>
+    <div><img src="report/f14_R.png" alt="Retrace"><p class="pc"><b>2 · Retrace</b>, put back in X order. The valley has become a ridge.</p></div>
+    <div><img src="report/f14_L.png" alt="Direction-dependent part"><p class="pc"><b>3 · L, the part that flips with direction.</b> Almost the whole image: <b>98% of the variance</b>, 4.5 pm rms.</p></div>
+    <div><img src="report/f14_S.png" alt="Direction-independent part"><p class="pc"><b>4 · S, the part both directions agree on</b>, the surface estimate. Nearly flat at this scale: 0.7 pm rms.</p></div>
+  </div>
+  <div class="split2">
+    <div><img src="report/f14_S_stretch.png" alt="S stretched"><p class="pc"><b>5 · S, contrast stretched.</b> A faint dark band remains, slanting toward the bottom left, plus row streaks.</p></div>
+    <div class="pc-box"><b>How to read this.</b> Splitting by direction gives the same verdict as splitting by rows: almost everything in the recorded image is the feedback lag (98% here, 97% by the row method).<br><br><b>But panel 5 adds something the row method hid.</b> After the lag is cancelled, a faint band slanting toward the bottom left is still there, and it repeats from frame to frame (repeat correlation 0.80 across the 42 sweeps at 10.5 nm). So the diagonal in the recorded image is partly <b>direction-independent structure</b> sitting under the lag, about one sixth of the lag's amplitude. <b>Update:</b> it repeats and appears in both Y halves, but it fails the zoom test in Section 3.6. It stays at the same pixel position when the window shrinks, so it is most likely instrument signal that folding doesn't cancel, not surface. The row method would have removed most of it, because a band that is nearly vertical is nearly "the same on every row". Two possible sources remain: a faint real feature on the gold, or a slow instrument effect that doesn't depend on direction (for example creep). The recorded valley also creeps steadily across frames, about 0.2 px per second over the 54 s of sweeps; whether the band moves with it hasn't been measured separately yet.</div>
+  </div>
+</figure>
+
+<figure class="static">
+<img src="report/f15_repeat.png" alt="Repeatability and direction-dependent share against window">
+<figcaption class="cap"><b>Figure 16. What repeats from frame to frame, across every sweep that could be paired with the next same-direction sweep at the same window.</b> Left: correlation of each sweep's surface estimate S with the next same-direction sweep's (coloured by realized line rate), and the same for the direction-dependent part L (grey crosses). Dashed line: 0.5. Right: share of each image that flips with scan direction.
+<span class="take">Takeaway: the lag part L repeats almost perfectly (median 0.94–0.98 above 3 nm), so it is a stable instrument signature, not noise. The surface estimate S repeats well only in large windows: median 0.90 at 20–50 nm, about 0.5 at 3–20 nm, and below 0.1 under 3 nm. This is the repeatability criterion applied directly, and it agrees with the coherence analysis (Figure 12): repeatable surface signal is lost below a window of a few nm. Meanwhile 78–97% of every image flips with direction (right).</span></figcaption>
+</figure>
+
+<div class="prose">
+<p><b>What this changes.</b> The main conclusion stands, now on a method that doesn't assume the artifact is fixed in X: the Z images are dominated by feedback lag, and repeatable surface signal disappears in windows smaller than a few nm. Two refinements:</p>
+<ul>
+<li><b>Folding trace and retrace is the better standard method.</b> It recovers direction-independent structure, including the slanted band in #741 that the row method partly removed. This matches the earlier finding (<code>docs/ai/hypotheses/stretch-compensation.md</code>) that trace/retrace folding improves reproducibility.</li>
+<li><b>Repeatability should be the acceptance test for "morphology".</b> A feature counts as surface only if it survives folding and repeats across frames. It should also move with drift as one block; that test needs a drift measurement, which failed here because the lag dominates image registration.</li>
+</ul>
+</div>
+
+<h3 class="ss" id="clean">3.5 The cleanest-looking image (and why it is not a good image of the surface)</h3>
+<div class="prose">
+<p>The folded image S (Figure 15, panel 5) is the best starting point, because it has the feedback lag cancelled. It still carries streaks. This section asks two things: which row alignment shows it best, and what the streaks are, including whether they are the ~3 Hz wobble.</p>
+</div>
+
+<figure class="static">
+<img src="report/f16_fold_variants.png" alt="Folded image of sweep 741 with seven processing variants">
+<figcaption class="cap"><b>Figure 17. Sweep #741 folded (trace + retrace averaged), processed seven ways.</b> Each panel uses its own 1–99% colour stretch, so compare shapes, not brightness.
+<ul class="caplist">
+<li><b>A, plane only:</b> no per-row alignment. The whole image is dominated by slow height changes between rows (75 pm rms), so the surface is invisible.</li>
+<li><b>B, median offset per row</b> and <b>C, median of row differences</b>: the two standard STM row alignments. The band and the bottom features appear, with strong fine streaks.</li>
+<li><b>D, offset + slope per row:</b> the version shown in Figure 15. Fewer streaks than B and C.</li>
+<li><b>E, 2nd-order fit per row:</b> removes row curvature too. Smoothest single frame, but it also bends real features: the band is distorted and the left side brightened, so it over-corrects.</li>
+<li><b>F, G, offset + slope, then averaged over 5 or 11 consecutive Y+ frames</b> (13 or 29 s). The fine streaks almost disappear, while the band and the bottom features stay.</li>
+</ul>
+<span class="take">Takeaway: G is the cleanest-<i>looking</i> processing of this sweep, but see the verdict below: it is not a good image of the surface. The fine streaks don't survive averaging, so they are noise. The band and the bottom features do survive, so they repeat. Repeating is not enough to make them surface, though: Section 3.6 shows the band stays fixed in pixels across the zoom ladder.</span></figcaption>
+</figure>
+<div class="abstract" style="border-left-color:var(--bad)" id="gverdict">
+<p><b>Verdict on Figure 17 G (10.5 nm): not a good image of the surface.</b></p>
+<ul>
+<li><b>It is coherent.</b> The average of 11 frames gives the same picture every time, both Y halves agree, and even single frames at this window are coherent row to row (r ≈ 0.88). Averaging mainly removed the fine streaks.</li>
+<li><b>Coherent is not the same as real.</b> About two-thirds of the image is the leftover lag pattern, fixed in the frame: the dark vertical band (Section 3.6). Only about a third moves with the sample, and that third is weak, about 0.3 pm (Figure 14c).</li>
+<li><b>Why it looks good:</b> averaging strengthens anything that repeats, and the instrument's own pattern repeats perfectly. So averaging made the artifact cleaner, not the surface clearer.</li>
+<li><b>Unconfirmed parts:</b> the dark band along the bottom and the bright bottom-right corner appear in both Y halves but haven't been tested against the zoom. Don't treat them as surface yet.</li>
+<li><b>Rule for Sept 24:</b> trust images at about 25 nm and above as surface. Treat 10.5 nm and below as instrument-dominated until the loop is faster or the lines slower.</li>
+</ul>
+</div>
+
+
+<figure class="static">
+<img src="report/f17_streak_spectra.png" alt="Spectra of row offsets and residual streaks in the folded images">
+<figcaption class="cap"><b>Figure 18. What the streaks are made of</b>, from all 42 folded sweeps at 10.5 nm (rows in time order; 195.3 rows per second, so 1 Hz = a pattern repeating every 195 rows). Dotted line: 3.05 Hz.
+<ul class="caplist">
+<li><b>Left, row offsets</b> (each row's average height; the broad bands in panel A of Figure 17): 64% of the power is below 1.5 Hz (slow drift) and 35% at 1.5–5 Hz, which includes the ~3 Hz wobble. At these line rates a 3 Hz wobble is a slow band about 64 rows tall, not a thin streak.</li>
+<li><b>Right, what is left after offset + slope removal</b> (the thin streaks in panel D): only 0.35 pm rms. One sharp tone at 35.9 Hz (a pattern every ~5.4 rows), plus broadband row-to-row noise up to the 98 Hz limit. Only 15% is in the 1.5–5 Hz band.</li>
+</ul>
+<span class="take">Takeaway: the ~3 Hz wobble is real and large, but it lives in the row offsets, which every row alignment removes. The thin streaks that remain are mostly the 35.9 Hz tone (the same one seen in Figure 13, consistent with a Z vibration near 160 or 230 Hz) and broadband noise. Neither repeats from frame to frame, which is why averaging frames removes them.</span></figcaption>
+</figure>
+
+<figure class="static">
+<img src="report/f18_updown_avg.png" alt="Averaged Y+ and Y- folded images and their difference">
+<figcaption class="cap"><b>Figure 19. Are the remaining features tied to position or to time?</b> Left: mean of the 21 Y+ folded frames. Middle: mean of the 21 Y− folded frames, rows in the same spatial order. Right: their difference. In Y+ the bottom rows are scanned first, right after Y turns around; in Y− they are scanned last.
+<span class="take">Takeaway: the two halves agree closely (correlation 0.92), and the bright bottom-right corner and dark bottom band sit in the same place in both. A creep transient after the Y turnaround would appear at the bottom in Y+ and at the top in Y−. So these features are tied to position, not to time. That leaves two options: fixed on the sample, or fixed in the scan's own coordinates. Section 3.6 separates them. The difference (right) is a light/dark pair along the band, meaning the band sits a few pixels apart in X between the two halves. That is the size of offset expected from X hysteresis or drift between the halves.</span></figcaption>
+</figure>
+
+<div class="prose">
+<p><b>Answer to "is the streaking the 3 Hz distortion?"</b> Partly. The ~3 Hz wobble is the biggest row-to-row disturbance, but it shifts whole rows up and down over about 64 rows, and row alignment removes it. The fine, one-to-five-row streaks left in the folded image are mostly a 35.9 Hz tone and broadband noise. Both change from frame to frame, so averaging a few frames removes them. What survives folding, alignment and averaging, and appears in both Y halves, was the best candidate for real surface structure in this window. Section 3.6 tests it against the zoom ladder, and the band fails.</p>
+</div>
+
+<h3 class="ss" id="replicate">3.6 The zoom ladder: does the scanner zoom, and what zooms with it?</h3>
+<div class="prose">
+<p>From 19:08:36 to 19:13:24 the scan centre did not move (constant X and Y offsets in the journal) while the window shrank from 24.8 to 4.9 nm. Every window is therefore centred on the same spot, which allows two separate questions. (a) When the GUI commands a zoom, does the scanner zoom by that amount? (b) As the window shrinks, does each image's content grow and move outward as a surface feature must, or does it stay put in the frame as an instrument pattern does?</p>
+</div>
+<h3 class="ss" id="zoomgrade">3.6a How accurate is the zoom?</h3>
+
+<div class="prose">
+<p>When the GUI commands a zoom, say 2.36×, does the scanner really zoom 2.36×? Each frame of a smaller window is shrunk by a range of trial zoom ratios and matched inside the larger window's averaged image, near the shared centre. The best-fitting ratio is that frame's measured zoom.</p>
+</div>
+<figure class="static">
+<img src="report/zoom_grade2.png" alt="Measured zoom divided by commanded zoom, per frame, for four window pairs">
+<figcaption class="cap"><b>Figure 20. Measured zoom ÷ commanded zoom, one frame at a time.</b> 1 means the zoom happened exactly as commanded. Blue dots: individual frames. Black bar: median. Grey dashed bar: where a frame would land if the image were fixed to the scan (no zoom). Green band: ±30%, a reference range, not a measured error. The search is held near the shared centre of the windows, because a free search over the whole image favours small templates, which match smooth content almost anywhere. An earlier version of this figure without that restriction put the 12.7 nm frames at the search limit.
+<ul class="caplist">
+<li><b>10.5 nm inside 24.8 nm:</b> median 1.07×; the middle half of frames spans 0.98–1.15×.</li>
+<li><b>12.7 nm inside 24.8 nm:</b> median 1.62×. Every frame still prefers the commanded zoom over no zoom. But the value can't be right: see the consistency check below.</li>
+<li><b>10.5 nm inside 12.7 nm:</b> median 0.96×; middle half 0.96–1.00×.</li>
+<li><b>4.9 nm inside 10.5 nm:</b> 0.59×, close to "fixed to the scan". This window is dominated by the lag profile, so its zoom can't be graded from images.</li>
+</ul>
+<span class="take">Takeaway: the zoom happens, and where it can be measured it matches the command within about 5–10%. The ±30% figure quoted earlier was the precision of a cruder version of this method, not an error in the zoom and not a correction factor.</span></figcaption>
+</figure>
+<div class="prose">
+<p><b>Consistency check.</b> Zoom ratios must chain: zoom(24.8 → 10.5) = zoom(24.8 → 12.7) × zoom(12.7 → 10.5).</p>
+<div class="tblwrap"><table class="dt" style="max-width:760px">
+<tr><th>Step</th><th>Commanded</th><th>Measured (median)</th></tr>
+<tr><td>24.8 → 12.7 nm</td><td>1.95×</td><td>3.16× (1.62 × 1.95)</td></tr>
+<tr><td>12.7 → 10.5 nm</td><td>1.21×</td><td>1.16× (0.96 × 1.21)</td></tr>
+<tr><td>Chained 24.8 → 10.5 nm</td><td>2.36×</td><td>predicted 3.67× from the two steps; measured directly 2.53× (1.07 × 2.36)</td></tr>
+</table></div>
+<p>The direct measurement and the second step agree with the command; the 24.8 → 12.7 step doesn't agree with either. The 12.7 nm frames are steady across all seven (1.5–1.75×), and none fall in the middle of a zoom change: the zoom command came at 19:09:42.8 and the first 12.7 nm frame started at 19:09:44.1. The most likely cause is that two-thirds of each 12.7 nm frame is the lag profile (part b below), which can pull the match toward the wrong scale. The images on hand can't settle it.</p>
+<p><b>Recommendation: keep the zoom as it is.</b> There is no consistent evidence of a zoom error, so a correction curve built from this data would be fitting noise. The decision belongs to the graded zoom ladders and the lattice calibration in Section 5 (items 12 and 13). Build a scan-size-dependent correction only if those show a consistent deviation larger than about 10%.</p>
+</div>
+
+
+<h3 class="ss">3.6b What scales with the zoom, and what stays fixed?</h3>
+
+<div class="prose">
+<p>Repeating from frame to frame and appearing in both Y halves cannot tell surface from an instrument pattern, because an instrument pattern tied to the scan's own coordinates also repeats. The zoom ladder can. When the window shrinks from L₁ to L₂, a surface feature must grow by L₁/L₂ and move outward from the centre. An instrument pattern stays at the same place in the frame. Each window below is processed exactly like Figure 17 G (folded, offset + slope per row, averaged over all frames at that window).</p>
+</div>
+
+<figure class="static">
+<img src="report/f20_zoom_chain.png" alt="The zoom ladder as a chain: each window with the next window boxed">
+<figcaption class="cap"><b>Figure 21. The zoom ladder as a chain.</b> Each panel is one window, processed like Figure 17 G (trace and retrace averaged, rows levelled, all frames at that window averaged), on <b>one fixed colour scale</b> (±1.6 pm), so a fainter panel really is flatter. White dashed box: where the next window down should sit if the zoom happened exactly as commanded. Blue box: where the next window actually fits best (measured, search held near the shared centre); the blue lines connect it to that next panel. Above each panel: frames averaged, the share of the image that is identical in every row, and how well the first half of the frames repeats the second half.
+<ul class="caplist">
+<li><b>24.8 nm:</b> rounded features of varied size, only 19% identical in every row. This looks like surface.</li>
+<li><b>12.7, 10.5 and 4.9 nm:</b> the same vertical dark band at about the same place and width in the frame, although the window shrinks 2.6×. Two-thirds of each image is identical in every row.</li>
+<li><b>Blue against white boxes:</b> 10.5 in 12.7 nm fits almost exactly where commanded (1.18× measured against 1.21× commanded). 4.9 in 10.5 nm "fits" across almost the whole frame (1.09× against 2.14×), because the band looks the same at any zoom. 12.7 in 24.8 nm fits in a smaller box off to the side (3.2× against 1.95×), the unreliable pair from part (a).</li>
+</ul>
+<span class="take">Takeaway: the band does not behave like the surface. Matching each smaller window inside the larger one fits better when the band is kept fixed in the frame than when it is scaled by the zoom ratio: 0.84 against 0.78 (10.5 in 12.7), 0.72 against 0.56 (4.9 in 10.5), 0.55 against 0.47 (4.9 in 12.7). Only at 24.8 nm does the content scale like a surface. The band is the part of the feedback-lag pattern that averaging trace and retrace doesn't cancel. It is fixed in the scan frame, not on the sample.</span></figcaption>
+</figure>
+
+<div class="prose">
+<p><b>What is consistent and what changes along the day's good region:</b></p>
+<div class="tblwrap"><table class="dt">
+<tr><th>Observation</th><th>Consistent?</th><th>What it means</th></tr>
+<tr><td>Feedback lag dominates the raw Z image (78–97%, flips with direction)</td><td>Yes, at every window and line rate</td><td>Instrument; fix with a faster loop or slower lines</td></tr>
+<tr><td>Folded band at ~40–55% across, 4.9–12.7 nm</td><td>Yes, but fixed in pixels across zooms</td><td>Instrument remainder, not surface</td></tr>
+<tr><td>Rounded features at 24.8 nm</td><td>Repeats (0.88), scales plausibly</td><td>Best evidence of real morphology on Sept 24</td></tr>
+<tr><td>Slanted band sliding ~0.2 px/s; bottom-right corner</td><td>Present in all 10.5 nm frames, both Y halves</td><td>Not yet tested against zoom separately; treat as unconfirmed</td></tr>
+<tr><td>5.9 nm window at 19:12–19:13</td><td>No (repeat 0.06)</td><td>Recorded just after rapid zoom changes; likely creep or drift, or a changed tip state</td></tr>
+</table></div>
+<p><b>Acceptance test for morphology, revised.</b> A feature counts as surface only if it (1) survives trace/retrace folding, (2) repeats across frames, (3) appears in both Y halves, and (4) scales with the zoom. Test 4 is the only one that separates the sample from patterns fixed in the scan's coordinates. Figure 17 G passes 1–3 and fails 4.</p>
+</div>
+
+<h3 class="ss" id="tone">3.7 What is the 35.9 Hz streak tone?</h3>
+<div class="prose">
+<p>The thin streaks left in folded images contain one sharp tone. Measured at four line rates, it lands where a single fixed-frequency source would fold to:</p>
+<div class="tblwrap"><table class="dt" style="max-width:820px">
+<tr><th>Realized line rate</th><th>Measured streak tone</th><th>Predicted for a fixed source near 159.5 Hz (or 231 Hz)</th></tr>
+<tr><td>195.3 Hz</td><td>35.9 Hz (± 0.4)</td><td>35.8 Hz</td></tr>
+<tr><td>130.2 Hz</td><td>29.5 Hz (± 0.5)</td><td>29.3 Hz</td></tr>
+<tr><td>65.1 Hz</td><td>29.2 Hz (± 0.13)</td><td>29.3 Hz</td></tr>
+</table></div>
+<ul>
+<li><b>It is not tied to the scan.</b> The tone's source frequency stays fixed while the line rate changes 3×, so it comes from a mechanical or electrical source that runs regardless of scanning.</li>
+<li><b>Its exact frequency can't be pinned down from these scans.</b> Every line rate the firmware produced on Sept 24 is 390.625 Hz ÷ n (100 kHz ÷ 256 ÷ n). A source at F and one at 390.6 − F (or F + 390.6) then fold identically at every one of them. The candidates are about 159.5 Hz or 231 Hz (or 550 / 622 Hz). All sit in the 100–300 Hz band where a Z resonance was already suspected.</li>
+<li><b>The raw tap, recorded only while the scan was halted, shows nearby but not identical lines</b>: 163.1, 202.9, 307.1 and 553 Hz in the current; 202.9 Hz also in Z. Only three halted stretches were usable (≥ 8 s, tunnelling), so this is thin evidence. 163.1 or 553 Hz could be the same resonance, shifted slightly when the tip is scanning.</li>
+<li><b>Coincidence:</b> at 32.6 and 19.5 Hz lines, every candidate folds to about 3.2 Hz, close to the "3 Hz" wobble. At those rates the two effects overlap; at 130–390 Hz lines they separate, and the ~3 Hz wobble is then seen directly at ~3 Hz.</li>
+</ul>
+<p><b>How to identify it:</b> (1) record a halted, tunnelling raw capture of 2 minutes or more (plan item 2b) to get the true spectrum without folding; (2) scan once at a line rate that is <i>not</i> 390.625 Hz ÷ n, for example 384 pixels per line (195 Hz requested runs at 260.4 Hz, where 159.5 Hz folds to 100.9 Hz and 231 Hz to 29.4 Hz). That needs the GUI's power-of-two pixel snap removed; a different SETD tick also works; (3) tap or damp the lever, the sample plate and the scanner separately and see which line moves. Section 4.1 discusses candidate sources and ranks the tests by how easy they are.</p>
+</div>
+
+<h2 class="sec" id="discussion">4 · Discussion: what is limiting resolution</h2>
+<div class="prose">
+<p><b>A model for the decoherence.</b> After the repeated profile is removed, each row holds two things: surface relief that changes slowly with Y (amplitude S), and noise that is independent from row to row (amplitude N). Their adjacent-row correlation is then</p>
+<p class="eqd">\[ r = \frac{S^{2}}{S^{2} + N^{2}}, \qquad S \propto L^{\alpha} \;\;\Rightarrow\;\; r = \frac{1}{1 + \left(L_c / L\right)^{2\alpha}} \]</p>
+<p>The surface relief inside a window grows with the window's size L (rough surfaces typically have α between 0.3 and 1), while N is fixed by the instrument. \(L_c\) is the window at which surface and noise are equal. Shrink the window below \(L_c\) and every row is mostly its own noise: that is the decoherence. It is the same shape of limit as the atomic sampling-phase effect in Figure 9b, with the instrument's noise floor in place of the lattice. The fit describes the data to about ±0.1 in r (Figure 12). It is phenomenological: it says when the image is lost, and Figure 13 says what the noise is.</p>
+</div>
+<div class="tblwrap"><table class="dt">
+<tr><th>Rank</th><th>Cause</th><th>Evidence</th><th>Confidence</th><th>Test or fix</th></tr>
+<tr><td>1</td><td><b>Feedback loop slower than a line.</b> At KIGA 1.1444 the loop's time constant (≈9 ms) is longer than a 195 Hz line (5.1 ms), so Z never settles within a row and the lag after each X turnaround repeats on every row.</td><td>Pixel-locked profile carries up to 98% of variance and stays fixed in pixels across a 4.6× zoom (Fig. 10, 11). Confirmed independently: the valley flips sign with scan direction, and 78–97% of every image does (Fig. 14–16). Z varies only pm on gold with 235 pm steps.</td><td>High</td><td>KIGA sweep 1.14 → 2.3 → 4.6 → 9 on one area, and slower lines (meeting plan 2a, 2b).</td></tr>
+<tr><td>2</td><td><b>Row-to-row noise floor of a few pm</b>: a ~3 Hz wobble in row height, plus one Z tone that appears to come from 160 or 230 Hz.</td><td>~3 Hz at the same frequency at 130, 195 and 390 Hz lines; one tone folding consistently to 35.1 and 29.5 Hz (Fig. 13). Candidate sources are discussed in Section 4.1; none is identified yet.</td><td>Medium</td><td>2-minute halted-tunnelling capture with the 100 kHz raw tap (plan 2b) gives the unfolded spectrum directly; then damp or isolate the source.</td></tr>
+<tr><td>3</td><td><b>Surface relief shrinks with the window</b> until it falls below the noise floor.</td><td>r falls with window size at every line rate; \(L_c\) ≈ 2–5 nm nominal (Fig. 12). Tip speed falls 34× while coherence falls.</td><td>High (it's geometry)</td><td>Fixes 1 and 2 lower N and so \(L_c\). Pick windows ≥ 2 × \(L_c\) until then.</td></tr>
+<tr><td>—</td><td>Not limiting yet: atomic sampling (5–6 px/atom), signal-chain bandwidth for atoms, slant, lateral calibration.</td><td>No lattice seen at any window; slant ≤ ½ px; calibration rescales labels but not r.</td><td>—</td><td>Revisit once a lattice is visible.</td></tr>
+</table></div>
+
+<h3 class="ss" id="sources">4.1 Where could the 160 or 230 Hz tone come from?</h3>
+<div class="prose">
+<p><b>Why a 160 Hz vibration shows up as about 30 Hz: the strobe effect.</b> Each image row is one snapshot of the vibration, taken once per line (195.3 times a second on Sept 24). A vibration faster than the snapshots looks slow, as a wagon wheel on film seems to turn slowly or backwards. A 159.5 Hz vibration completes 0.817 of a cycle between rows, which looks the same as slipping back 0.183 of a cycle per row: 0.183 × 195.3 = 35.8 Hz, the stripe frequency measured. The same vibration predicts the 29.3 Hz stripes seen at 130.2 and 65.1 lines per second, which is why it must be a fixed physical source and not something the scan creates.</p>
+<p><b>Why "Z resonance" is the leading idea.</b> Everything between the tip and the sample is springy and has mass: the piezo disc, the stem, the tip wire, the lever and sample plate, the springs that hold them, and the coarse-approach screw. Every spring with a mass has natural frequencies at which it rings, like a tuning fork. Nudge it near one, with sound, floor vibration, a fan or the feedback loop itself, and it vibrates far more than the nudge. The tunnel current changes about tenfold for every ~0.1 nm of gap, so picometres of ringing in tip-to-sample distance show up clearly. The STM literature treats this as the central noise problem. The lowest mechanical resonance limits how fast the feedback can be, and noise-spectrum peaks line up with the structure's own vibration modes.</p>
+<p><b>Why the frequency points to the larger parts.</b> Professional STMs put their lowest resonance at 5–15 kHz (a stiff piezo tube or tripod), and even then the base or the coarse-positioning stage can add lower modes. Our buzzer disc with its stem was estimated at 3–4 kHz. A mode at 160–230 Hz is far too low for the disc itself. It points to a bigger, floppier part of the tip-to-sample path: the lever, the sample plate on its springs, or the coarse-approach screw and lever chain.</p>
+<p><b>The general cure is a stiffer, more compact mechanical loop plus isolation.</b> A short, rigid path from tip to sample pushes its resonances up and away from the noise that excites them. Isolation keeps floor and room vibration from reaching it at all. Stiff cables or tubes can short-circuit the isolation.</p>
+</div>
+
+<div class="tblwrap" style="margin-top:6px"><table class="dt">
+<tr><th>Candidate source</th><th>Fits a fixed ~160 or ~230 Hz?</th><th>Notes</th></tr>
+<tr><td><b>Mechanical mode of the lever, sample plate or springs</b></td><td>Good fit</td><td>Low and sharp, and the most likely given the build. Spring tension and plate bending were already raised as stability issues; the current "longboard" head is built around this lever, and the wedge assembly is a future concept to replace it with a stiffer design.</td></tr>
+<tr><td><b>Sound in the room</b> (voices, fans, HVAC, PC)</td><td>Likely exciter, not the frequency itself</td><td>Speech and fans carry a lot of energy at 100–300 Hz. The Sept 24 sound test showed the rig picks up 25 and 50 Hz tones. Room acoustic modes appear in published STM spectra, and one high-field STM reports a broad 100–250 Hz noise band.</td></tr>
+<tr><td><b>Mains hum</b> (60 Hz and harmonics)</td><td>Ruled out for this tone</td><td>At 195.3 lines/s, 120, 180 and 240 Hz would show at 75.3, 15.3 and 44.7 Hz, not 35.9. The raw tap does show a 61.5 Hz line worth checking separately.</td></tr>
+<tr><td><b>Our own firmware and electronics</b></td><td>Unlikely for this tone; possible for others</td><td>The status stream runs at 200 Hz, and the raw tap has a strong 202.9 Hz line in Z. 200 Hz would show at 4.7 Hz in the 195 Hz scans, so it doesn't explain 35.9 Hz, but it could explain the 202.9 Hz line.</td></tr>
+<tr><td><b>Stepper motor driver</b></td><td>Possible</td><td>Some drivers keep holding current, chopped at a fixed rate, even when the motor is "off". Worth checking whether the driver is powered during scans.</td></tr>
+<tr><td><b>Feedback loop ringing</b></td><td>Not at today's gain</td><td>A loop crossing over at ~18 Hz is too slow to ring at 160–230 Hz. That changes once KIGA is raised: stop at the first ~200 Hz ringing.</td></tr>
+</table></div>
+
+<div class="prose">
+<p><b>Tests, ordered by how easy they are to run</b></p>
+</div>
+<div class="tblwrap"><table class="dt">
+<tr><th>Effort</th><th>Test</th><th>What it settles</th></tr>
+<tr><td>Software setting only</td><td><b>One scan at a line rate that isn't 390.625 Hz ÷ n</b>, e.g. 384 pixels per line (195 Hz requested runs at 260.4 Hz). Needs the GUI's power-of-two snap lifted, or a different SETD tick.</td><td>Breaks the ambiguity: 159.5 Hz would show at 100.9 Hz, 231 Hz at 29.4 Hz.</td></tr>
+<tr><td>Software setting only</td><td><b>Change the status-stream rate</b> (STRM) and watch the raw-tap lines.</td><td>Whether the 202.9 Hz line is our own electronics.</td></tr>
+<tr><td>GUI action</td><td><b>Halted, tunnelling raw capture</b>, constant current on, a few 30 s holds or one 2-minute hold.</td><td>The true spectrum with no strobe effect. Drift isn't a problem for this: it is slower than 1 Hz, the spectrum is computed in short segments, and the slow loop keeps tracking it while 160–230 Hz passes straight through to the current. Several short holds are safer than one long one if drift is large.</td></tr>
+<tr><td>Bench, minutes</td><td><b>Tap test</b> during a halted capture: tap the lever, the plate, the frame and the table one at a time. <b>Switch-off test</b>: fans, HVAC, stepper-driver power.</td><td>Ties a spectral line to a physical part, or to a source in the room.</td></tr>
+<tr><td>Bench, minutes</td><td><b>Sound sweep</b>: play a slow tone sweep from 100 to 300 Hz near the rig while recording.</td><td>A resonance shows as a sharp jump in current noise at one frequency.</td></tr>
+<tr><td>Firmware change</td><td><b>Sine-sweep (lock-in) test</b>: the firmware adds a tiny sine (a few pm) to Z, steps its frequency from ~50 Hz to ~1 kHz, and the PC reads the current's response at each frequency from the raw tap.</td><td>Measures the mechanical loop's frequency response directly: amplitude peaks and phase jumps mark each resonance. This is the standard way to characterise an STM head.</td></tr>
+</table></div>
+
+<p class="sub" style="margin-top:12px">Sources: <a href="https://arxiv.org/pdf/1810.09727">ultra-stable STM design guidelines</a>; <a href="https://arxiv.org/pdf/1310.1046">dilution-refrigerator STM</a>; <a href="https://www2.iap.tuwien.ac.at/www-surface/abstracts/A1992e04.html">vibration isolation systems for STMs</a>; <a href="https://acnpsearch.tweb-dev.unibo.it/singlejournalindex/2733415">vibrational response of a beetle-type STM</a>; <a href="https://acnpsearch.tweb-dev.unibo.it/singlejournalindex/937425">STM feedback with separate actuators</a>; <a href="https://arxiv.org/pdf/2310.05413">Open STM (buzzer scanner)</a>; <a href="https://meetings-archive.aps.org/oss/2007/p1/12">tube-scanner STM performance</a>; <a href="https://arxiv.org/pdf/1707.02844">STM in a Bitter magnet</a>; <a href="https://arxiv.org/pdf/1806.03171">compact UHV STM with dilution refrigeration</a>; <a href="https://arxiv.org/pdf/physics/0610280">tunnel-current amplifier for mK STM</a>; <a href="https://www.rsc.org/suppdata/nr/c3/c3nr02216a/c3nr02216a.pdf">STM noise diagnostics (RSC supplement)</a>.</p>
+
+<h2 class="sec" id="next">5 · Action items</h2>
+<div class="prose">
+<p>Everything this report raised, framed as actions: what we would do, what it answers, and what we would change if the answer comes back positive. Each action is scored 1–3 on three scales so they can be compared:</p>
+<ul>
+<li><b>Lead</b>: how likely it is to find or fix the main limit on resolution identified here (feedback lag first, then the row-to-row noise sources). 3 = likely.</li>
+<li><b>Ease</b>: how quickly it can be done with what we have. 3 = analysis or a setting change; 2 = a bench session or a small code change; 1 = new hardware or a larger firmware feature.</li>
+<li><b>Impact</b>: how much a positive result would change the instrument's design or standard settings. 3 = changes the design or defaults.</li>
+</ul>
+<p>Click a column heading to sort. "Score" is the sum of the three. The chart places each action by ease and lead, with the circle size showing impact. Hover a circle for its name.</p>
+</div>
+<figure class="static" id="actions">
+  <div class="act-grid">
+    <svg id="actChart" viewBox="0 0 460 360" role="img" aria-label="Action items by ease and lead likelihood"></svg>
+    <div class="act-key">
+      <div><i style="background:#2f6fd0"></i>Analysis or setting change</div>
+      <div><i style="background:#2f9a6a"></i>Bench session</div>
+      <div><i style="background:#c99a1c"></i>Firmware or tooling</div>
+      <div><i style="background:#c8433a"></i>Hardware</div>
+      <div><i style="background:#8a4fc0"></i>Documentation</div>
+      <p class="sub" style="margin-top:10px">Top right = likely to find the lead and easy to do: start there. Big circles = would change the design.</p>
+    </div>
+  </div>
+  <div class="tblwrap"><table class="dt acttab" id="actTab"></table></div>
+  <figcaption class="cap"><b>Figure 22. Action items compared by lead likelihood, ease and design impact.</b> Scores are judgement calls from the evidence in Sections 3–4, not measurements; revise them as results come in.
+  <span class="take">Takeaway: the fastest route to better images is the KIGA and line-rate sweep plus halted tunnelling captures and tap tests. All three use existing settings and a bench session, and they test the two leading limits (feedback lag and mechanical noise). Calibration on a known lattice and graded zoom ladders come next; they don't fix noise, but they make every later number trustworthy.</span></figcaption>
+</figure>
+
+<h2 class="sec" id="formulas">Appendix A · Key firmware formulas</h2>
+<p class="sub">How the firmware (FW 5.6, <code>software/firmware/arduinosrc/main/</code>) turns the GUI settings into tip motion. Symbols: <i>L</i> = scan size, <i>P</i> = Pixels/line (IPLN), <i>N</i> = <i>P</i>/2 image pixels, <i>R</i> = line re-scan (LRPT), <i>f</i><sub>ISR</sub> = control-loop rate.</p>
+<div class="tblwrap"><table class="f">
+<tr><th>Quantity</th><th>Formula</th><th>Where / notes</th></tr>
+<tr><td>Control-loop (ISR) rate</td><td>\(f_{\mathrm{ISR}} = \dfrac{10^{6}}{\Delta t_{\mu s}}\)</td><td><code>SETD dt_us</code>. Firmware default 40 µs (25 kHz); the GUI calibration uses 100 kHz (10 µs).</td></tr>
+<tr><td>Samples per pixel</td><td>\(\mathrm{spp} = \left\lfloor \dfrac{10^{6}}{f_{\mathrm{line}}\,\Delta t_{\mu s}\,P} \right\rfloor\)</td><td><code>updateStepSizes()</code>. Clamped to 1–4000. <code>SPPX n</code> pins it instead.</td></tr>
+<tr><td>Realized line rate</td><td>\(f_{\mathrm{real}} = \dfrac{f_{\mathrm{ISR}}}{\mathrm{spp}\cdot P}\)</td><td>Differs from the request because spp rounds down (30 Hz at 512 → 32.55 Hz).</td></tr>
+<tr><td>Image pixels, rows</td><td>\(N = \dfrac{P}{2}\) (both)</td><td>One line = trace + retrace, so half the samples belong to each. Scans are always square.</td></tr>
+<tr><td>Pixel / row pitch</td><td>\(p = \dfrac{L}{N}\)</td><td>Same in X and Y.</td></tr>
+<tr><td>X counter step per tick</td><td>\(\Delta x = \dfrac{4\cdot 2^{30}}{\mathrm{spp}\cdot P}\)</td><td>Exact rational step with a Bresenham remainder (FW 5.6). One full X triangle per line.</td></tr>
+<tr><td>Y counter step per tick</td><td>\(\Delta y = \dfrac{\Delta x}{P\,R}\)</td><td>Y moves continuously: one row pitch per trace+retrace pair, half during each.</td></tr>
+<tr><td>Position from counter</td><td>\(x_{\mathrm{pos}} = \dfrac{x_{\mathrm{count}}\cdot \mathrm{SCSZ}}{2^{31}} + \mathrm{XOFS}\)</td><td>xCount runs ±2³⁰ and reflects at the limits, giving x_pos = ±SCSZ/2 around the offset.</td></tr>
+<tr><td>Size in DAC units</td><td>\(\mathrm{SCSZ} = 16\cdot\dfrac{L}{k_{\mathrm{nm/V}}\; k_{\mathrm{V/LSB}}}\)</td><td><code>scan_controller.py</code>. ×16 because positions are 20-bit and the DAC is 16-bit with sigma-delta (one unit = 47.7 fm at 5 nm/V).</td></tr>
+<tr><td>Slant angle</td><td>\(\theta = \arctan\dfrac{1}{2N}\)</td><td>Y moves p/2 while X moves N·p.</td></tr>
+<tr><td>Half-sweep time</td><td>\(T = \dfrac{N\,R}{f_{\mathrm{real}}}\)</td><td>Time for one Y+ or Y− frame.</td></tr>
+<tr><td>Tip speed on a trace</td><td>\(v = 2\,L\,f_{\mathrm{real}}\)</td><td>The trace takes half of each line period.</td></tr>
+<tr><td>Feedback error</td><td>\(e = \ln I_{\mathrm{set}} - \ln\lvert I\rvert\) (as lookup tables)</td><td><code>controlTick()</code>. Too little current → err &gt; 0 → Z extends.</td></tr>
+<tr><td>Integrator gain</td><td>\(K_{i,\mathrm{ISR}} = 65536\cdot\mathrm{KIGA}\), added every tick</td><td><code>setIsrGains()</code>. Applied per tick, so the same KIGA at a higher f_ISR is a faster loop. Crossover ≈ 15.7 Hz per unit KIGA at 100 kHz (from 1.1444 → ~18 Hz, a model estimate).</td></tr>
+</table></div>
+
+<h2 class="sec" id="glossary">Appendix B · Glossary</h2>
+<dl class="gl">
+  <dt>Adjacent-row correlation (r)</dt><dd>How alike each image row is to the next once the profile shared by every row is removed. Near 1: real surface structure; near 0: row-to-row noise. Used in Section 3.</dd>
+  <dt>Aliasing / moiré</dt><dd>What undersampling produces: a false pattern with the wrong period and direction, not just blur.</dd>
+  <dt>Beat period</dt><dd>How many atoms before the sampling phase repeats: 1 ÷ (fractional part of pixels per atom). Close to a whole number gives a long, slow moiré; far from it gives a short, blotchy pattern.</dd>
+  <dt>Calibration (nm/V)</dt><dd><code>piezo_x/y_nm_per_v</code> converts nm to volts. Currently a placeholder (5.0). Every nm on this page scales with it.</dd>
+  <dt>Coherence window (\(L_c\))</dt><dd>The scan window at which r = ½: surface relief and row-to-row noise are equal. Smaller windows decohere. ≈2–5 nm nominal on Sept 24.</dd>
+  <dt>Constant current (CC)</dt><dd>Feedback moves Z to hold the tunnelling current at the setpoint. Topography appears in Z.</dd>
+  <dt>Constant height</dt><dd>Feedback off (or very slow); Z is held and topography appears in the current.</dd>
+  <dt>Contrast surviving</dt><dd>Fraction of the true atomic signal amplitude left after the signal chain and pixel averaging.</dd>
+  <dt>Coverage parallelogram</dt><dd>The true area scanned when rows are slanted: the intended square, sheared by the slant. No gaps between rows.</dd>
+  <dt>Creep</dt><dd>Slow continued piezo motion after a voltage change, about 1–2% more per tenfold time (vendor γ ≈ 0.015).</dd>
+  <dt>Error channel (e_)</dt><dd>setpoint − ln|current|, per pixel: what the loop hasn't corrected. Bright = less current.</dd>
+  <dt>Fast axis (X)</dt><dd>The axis scanned back and forth on every line. One line = one trace + one retrace.</dd>
+  <dt>Hysteresis</dt><dd>Piezo position depends on the direction it was moving, so trace vs retrace and Y+ vs Y− land slightly differently.</dd>
+  <dt>ISR / control tick (SETD)</dt><dd>The firmware's fixed-rate interrupt: it moves X/Y, reads the current and updates Z once per tick.</dd>
+  <dt>KIGA</dt><dd>The integral gain command for the CC loop. Applied per control tick.</dd>
+  <dt>Line rate (LRAT)</dt><dd>Requested lines per second. The <b>realized</b> rate is what the firmware really runs after rounding samples per pixel.</dd>
+  <dt>Line re-scan (LRPT)</dt><dd>Each row is scanned N times and averaged before it's sent. Y keeps moving during the repeats.</dd>
+  <dt>Nyquist limit</dt><dd>At least 2 samples per period are needed to record a repeating pattern at all. ≥4 to see its shape.</dd>
+  <dt>Peak-capture scatter</dt><dd>Atom-to-atom spread in apparent brightness caused by the sampling phase. Deterministic and repeatable, though it looks like noise. Frame averaging doesn't remove it; finer sampling does. Keep it under ~15% with ≥5–6 px per atom spacing.</dd>
+  <dt>Pixel pitch / row pitch</dt><dd>Distance between rows (and between pixels in a row): scan size ÷ (IPLN/2).</dd>
+  <dt>Pixel-locked profile</dt><dd>Content identical at the same X in every row, so it stays at the same pixel position when you zoom. Comes from timing within the line (e.g. loop lag after each X turnaround), not from the sample.</dd>
+  <dt>Pixels/line (IPLN)</dt><dd>Samples per line across trace and retrace together. The image is IPLN/2 pixels wide and IPLN/2 rows tall.</dd>
+  <dt>Realized line rate</dt><dd>The line rate the firmware actually runs after rounding samples per pixel down. Can differ greatly from the request (97.66 Hz at 512 px runs at 195.3 Hz).</dd>
+  <dt>Retrace</dt><dd>The X+ → X− half of a line, recorded too (<code>e_retrace</code>, <code>z_retrace</code>). Not the tip retracting from the sample. Runs half a row pitch above its trace.</dd>
+  <dt>Row / line</dt><dd>One image row is built from one trace. "Line" in firmware means trace + retrace.</dd>
+  <dt>Samples per pixel (SPPX)</dt><dd>Control-loop samples averaged into each pixel. Normally derived from line rate; SPPX pins it.</dd>
+  <dt>Sampling phase</dt><dd>Where within an atom (centre, flank, valley) the nearest sample lands. It walks from atom to atom unless pixels per atom is a whole number.</dd>
+  <dt>Scan size (SCSZ)</dt><dd>Side length of the square scan. Converted to DAC units using the piezo calibration.</dd>
+  <dt>Shear</dt><dd>The image distortion from drawing slanted rows as horizontal: up to ½ pixel at the right edge. Uncorrected in live and replay.</dd>
+  <dt>Signal-chain corner, τ</dt><dd>The bandwidth limit of everything between tip and ADC (preamp and possibly piezo response). Measured τ ≈ 400 µs, corner ≈ 400 Hz. Signals faster than the corner are attenuated.</dd>
+  <dt>Slant</dt><dd>The tilt of each row caused by Y moving during the row: half a row pitch over a full row. Angle atan(1/(2N)).</dd>
+  <dt>Slow axis (Y)</dt><dd>The axis that moves gradually from row to row. Ours moves <b>continuously</b> on every control tick, not in steps.</dd>
+  <dt>Smear</dt><dd>How far the tip travels in one chain time constant: features are dragged along the row by about that distance.</dd>
+  <dt>Trace</dt><dd>The X− → X+ half of a line. The live view and the default replay channel (<code>e_trace</code>, <code>z_trace</code>) show trace data. The "forward" pass.</dd>
+  <dt>X / Y offset (XOFS, YOFS)</dt><dd>Centre of the scan square. Moving it causes creep.</dd>
+  <dt>Y+ / Y− half-sweep</dt><dd>One pass of Y across the whole scan, rising (Y+) or falling (Y−). Replay calls them ▲ up and ▼ down; the live raster uses the opposite names (plan item 5d). Each one is a complete frame.</dd>
+  <dt>Z channel (z_)</dt><dd>The Z piezo position per pixel. Up = extend, so bright Z = lower surface.</dd>
+  <dt>Z loop crossover</dt><dd>The frequency above which the CC loop stops following the surface. Features passing faster than it show in the error channel instead of Z.</dd>
+</dl>
+
+<h2 class="sec" id="caveats">Appendix C · Limitations</h2>
+<ul class="notes">
+  <li>Case study: one sample, one tip, one day. \(L_c\) depends on the tip, the surface and the loop gain; treat the numbers as this rig's state on Sept 24, not constants.</li>
+  <li>Case study: the noise sources discussed in Section 4.1 are hypotheses consistent with the spectra, not identified. A 160 Hz and a 230 Hz tone fold to the same observed values at these line rates; one more line rate or the raw tap would separate them.</li>
+  <li>Case study: 34 of 1,125 sweeps have timestamps that disagree with the rebuilt line rate by more than 30%, mostly around dropped lines. Sweeps recorded at 1024 Pixels/line are indexed with the wrong row count and were excluded from the fits.</li>
+  <li>All nm values assume the placeholder 5 nm/V calibration. Image a known lattice (HOPG, 0.246 nm) to correct it.</li>
+  <li>The signal chain is modelled as one pole. The 400 Hz corner may combine the preamp with piezo mechanics, and that's still an open hypothesis.</li>
+  <li>The KIGA → crossover conversion is an estimate from the Sept 24 diagnosis, not a measurement.</li>
+  <li>Figure 4 assumes an ideal lattice with no noise, drift, creep, tip shape or loop lag. Real images are worse, never better.</li>
+  <li>All motion shown is the commanded motion. The real piezo adds creep and hysteresis on top.</li>
+</ul>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const ISR=100000;
+const logMap=(lo,hi)=>({to:u=>lo*Math.pow(hi/lo,u),from:v=>Math.log(v/lo)/Math.log(hi/lo)});
+const mL=logMap(1,50), mF=logMap(0.5,120), mFc=logMap(50,5000);
+const pplSteps=[]; for(let v=32;v<=2048;v+=v<256?16:v<1024?32:64) pplSteps.push(v);
+$('L').value=mL.from(30); $('f').value=mF.from(10); $('fc').value=mFc.from(400); $('PPL').value=pplSteps.indexOf(512)/(pplSteps.length-1);
+
+function params(){
+  const L=+mL.to(+$('L').value).toPrecision(3);
+  const PPL=pplSteps[Math.round(+$('PPL').value*(pplSteps.length-1))];
+  const freq=+mF.to(+$('f').value).toPrecision(3);
+  const fc=Math.round(mFc.to(+$('fc').value));
+  const lr=+$('lr').value;
+  let a=$('feat').value==='custom'?+$('aCustom').value:+$('feat').value;
+  if(!(a>0)) a=0.5;
+  return {L,PPL,freq,fc,lr,a,rot:+$('rot').value,k:+$('k').value};
+}
+function derive(L,PPL,freq,fc,a){
+  const N=PPL/2, p=L/N;
+  const spp=Math.min(4000,Math.max(1,Math.floor(ISR/(PPL*freq))));
+  const fr=ISR/(spp*PPL);
+  const v=2*L*fr, ff=v/a;
+  const chain=1/Math.sqrt(1+(ff/fc)**2);
+  const ratio=p/a, x=Math.PI*ratio, box=ratio>0?Math.abs(Math.sin(x)/x):1;
+  return {N,p,spp,fr,v,ff,chain,box,contrast:chain*box,ppa:a/p,smear:v/(2*Math.PI*fc)};
+}
+const grade=(ppa,c)=>{const s=ppa>=4?2:ppa>=2?1:0,t=c>=0.5?2:c>=0.15?1:0;return['bad','warn','ok'][Math.min(s,t)];};
+const fmt=(v,d=3)=>(+v.toPrecision(d)).toString();
+
+function lattice(x,y,a,rot){
+  const k=4*Math.PI/(Math.sqrt(3)*a); let s=0;
+  for(let i=0;i<3;i++){const th=(rot+30+i*60)*Math.PI/180; s+=Math.cos(k*(x*Math.cos(th)+y*Math.sin(th)));}
+  return (s+1.5)/4.5;
+}
+function colormap(t){t=Math.max(0,Math.min(1,t));return[Math.round(255*Math.min(1,Math.max(0,1.6*t-0.35))),Math.round(255*Math.min(1,Math.max(0,1.3*t-0.05))),Math.round(255*Math.min(1,0.35+0.9*t-0.6*t*t))];}
+
+function drawImages(P,D){
+  // Both panels show the same physical window, fixed by scan size and feature only:
+  // the whole scan, or a 12-atom-wide patch at its centre for large scans.
+  const Vw=Math.min(P.L,12*P.a), half=Vw/2;
+  const tc=$('truth'),tx=tc.getContext('2d'),T=tc.width,img=tx.createImageData(T,T);
+  for(let j=0;j<T;j++)for(let i=0;i<T;i++){const x=-half+(i+0.5)/T*Vw,y=half-(j+0.5)/T*Vw;img.data.set([...colormap(lattice(x,y,P.a,P.rot)),255],4*(j*T+i));}
+  tx.putImageData(img,0,0);
+  const n=Vw/D.p, nI=Math.max(1,Math.ceil(n)), C=Math.max(2,Math.min(384,Math.round(n)));
+  const sc=$('samp'); sc.width=C; sc.height=C;
+  const sx=sc.getContext('2d'),simg=sx.createImageData(C,C);
+  const colOf=Array.from({length:C},(_,c)=>Math.min(nI-1,Math.floor((c+0.5)*n/C)));
+  const tauPx=(1/(2*Math.PI*P.fc))/(1/(2*D.fr)/D.N), sub=n>600?2:n>200?3:6, al=tauPx>0?1-Math.exp(-1/tauPx):1;
+  // Feedback loop: Z follows the (bandwidth-limited) signal with a single pole at the
+  // loop crossover; the error image is what Z hasn't caught up with.
+  const xc=15.7*P.k, tauLoopPx=(1/(2*Math.PI*xc))/(1/(2*D.fr)/D.N), aL=1-Math.exp(-1/Math.max(1e-6,tauLoopPx));
+  const zMode=$('chZ').checked, MEAN=1.5/4.5;
+  const pre=Math.min(1500,Math.ceil(6*Math.max(tauPx,Math.min(tauLoopPx,250)))+2);
+  for(let j=0;j<C;j++){
+    const r=Math.min(nI-1,Math.floor((j+0.5)*n/C)), y0=half-(r+0.5)*D.p; let st=null, z=null, c=0;
+    for(let i=-pre;i<nI && c<C;i++){
+      let s=0; for(let q=0;q<sub;q++){const u=i+(q+0.5)/sub; s+=lattice(-half+u*D.p, y0+u/D.N*D.p/2, P.a,P.rot);} s/=sub;
+      st=st===null?s:st+al*(s-st);
+      z=z===null?MEAN:z+aL*(st-z);
+      while(c<C && colOf[c]===i){simg.data.set([...colormap(zMode?z:MEAN+(st-z)),255],4*(j*C+c)); c++;}
+    }
+  }
+  sx.putImageData(simg,0,0);
+  const whole=Vw>=P.L-1e-9;
+  $('truthCap').textContent=`True surface · ${fmt(Vw)} nm ${whole?'(whole scan)':'(centre of the scan)'}`;
+  $('sampCap').textContent=`Simulated ${zMode?'Z (height)':'error (current)'} image · ${Math.round(n)} × ${Math.round(n)} scan px`;
+}
+
+function drawPath(P,D){
+  const svg=$('path'),W=500,H=300,ex=$('exag').checked?20:1;
+  // Window: about 3.5 atom spacings tall (or 3 rows if rows are coarser), so atoms and rows can be compared.
+  const span=Math.max(3.5*P.a,3*D.p), sc=H/span, xw=W/sc;
+  const need=Math.ceil(span/D.p), k=Math.max(1,Math.ceil(need/24)), cols=Math.min(D.N,Math.ceil(xw/D.p));
+  const A=P.a, th=P.rot*Math.PI/180, a1=[A*Math.cos(th),A*Math.sin(th)], a2=[A*Math.cos(th+Math.PI/3),A*Math.sin(th+Math.PI/3)];
+  const R=Math.ceil((xw+span)/A)+2;
+  let s=`<defs><clipPath id="pclip"><rect x="0" y="0" width="${W}" height="${H}"/></clipPath><radialGradient id="atomg"><stop offset="0" stop-color="${css('--muted')}" stop-opacity=".55"/><stop offset="1" stop-color="${css('--muted')}" stop-opacity="0"/></radialGradient></defs><g clip-path="url(#pclip)">`;
+  const rr=0.42*A*sc;
+  if(R<120) for(let m=-R;m<=R;m++)for(let n=-R;n<=R;n++){const x=m*a1[0]+n*a2[0],y=m*a1[1]+n*a2[1];if(x>=-A&&x<=xw+A&&y>=-A&&y<=span+A)s+=`<circle cx="${(x*sc).toFixed(1)}" cy="${(H-y*sc).toFixed(1)}" r="${rr.toFixed(1)}" fill="url(#atomg)"/>`;}
+  const rowLen=D.N*D.p, slope=(D.p/2)/rowLen*ex;
+  for(let r=0;r<need;r+=k){
+    // window centred on the row: x0 = distance from X− to the window's left edge
+    const x0=Math.max(0,rowLen/2-xw/2), y0=r*D.p, ty=x=>y0+slope*(x0+x), ry=x=>y0+D.p/2+slope*(rowLen-x0-x);
+    s+=`<line x1="0" y1="${H-ty(0)*sc}" x2="${W}" y2="${H-ty(xw)*sc}" stroke="${css('--a')}" stroke-width="1.6"/>`;
+    s+=`<line x1="${W}" y1="${H-ry(xw)*sc}" x2="0" y2="${H-ry(0)*sc}" stroke="${css('--b')}" stroke-width="1.2" stroke-dasharray="5 4"/>`;
+    for(let c=0;c<cols;c+=k){const x=(c+0.5)*D.p;s+=`<circle cx="${(x*sc).toFixed(1)}" cy="${(H-ty(x)*sc).toFixed(1)}" r="2.6" fill="${css('--a')}"/>`;}
+  }
+  s+=`</g><rect x="0" y="0" width="${W}" height="20" fill="${css('--panel')}" opacity=".85"/><text x="6" y="14" font-size="12" fill="${css('--ink2')}">window ${fmt(xw)} × ${fmt(span)} nm · row pitch ${fmt(D.p)} nm · atom spacing ${fmt(P.a)} nm · ${fmt(D.ppa,2)} px per atom${k>1?` · every ${k}th row and pixel drawn`:''}</text>`;
+  svg.innerHTML=s;
+}
+
+function drawCoverage(){
+  const n=+$('cn').value, Rr=+$('cr').value, mode=$('cm').value, ex=+$('cx').value;
+  $('cnOut').textContent=n; $('crOut').textContent=Rr; $('cxOut').textContent=ex;
+  $('cxWrap').style.visibility=mode==='x'?'visible':'hidden';
+  const S=1, p=S/Rr;                         // window = 1 unit, Rr rows, Rr px per row
+  const slope=mode==='45'?1:(1/(2*Rr))*(mode==='x'?ex:1);
+  const rise=slope*S;
+  const W=640,H=420,m=30, sc=Math.min((W-2*m)/S,(H-2*m)/(S+rise+0.02));
+  const ox=(W-S*sc)/2, oy=H-m;
+  const X=x=>ox+x*sc, Y=y=>oy-y*sc;
+  let s='';
+  for(let k=0;k<Rr;k++){
+    const y0=k*p, y1=(k+1)*p;
+    s+=`<polygon points="${X(0)},${Y(y0)} ${X(S)},${Y(y0+rise)} ${X(S)},${Y(y1+rise)} ${X(0)},${Y(y1)}" fill="${css(k%2?'--band2':'--band1')}" stroke="none"/>`;
+  }
+  s+=`<polygon points="${X(0)},${Y(0)} ${X(S)},${Y(rise)} ${X(S)},${Y(S+rise)} ${X(0)},${Y(S)}" fill="none" stroke="${css('--a')}" stroke-width="1.5"/>`;
+  s+=`<rect x="${X(0)}" y="${Y(S)}" width="${S*sc}" height="${S*sc}" fill="none" stroke="${css('--ink')}" stroke-width="1.5" stroke-dasharray="6 5"/>`;
+  // pixel centres on trace lines
+  if(Rr<=40) for(let k=0;k<Rr;k++)for(let i=0;i<Rr;i++){const x=(i+0.5)*p,y=(k+0.5)*p+slope*x;s+=`<circle cx="${X(x)}" cy="${Y(y)}" r="2" fill="${css('--a')}"/>`;}
+  // atoms
+  const a=S/n, r=Math.min(0.28*a*sc,22); let inside=0,out=0,edge=0;
+  for(let j=0;j<n;j++)for(let i=0;i<n;i++){
+    const x=(i+0.5)*a,y=(j+0.5)*a, lo=slope*x, hi=slope*x+S;
+    const cov=y>=lo&&y<=hi; const dist=Math.min(Math.abs(y-lo),Math.abs(hi-y))/Math.sqrt(1+slope*slope);
+    if(cov){inside++; if(dist<0.28*a) edge++;} else out++;
+    s+=cov?`<circle cx="${X(x)}" cy="${Y(y)}" r="${r}" fill="${css('--ok')}" fill-opacity=".85"/>`
+          :`<circle cx="${X(x)}" cy="${Y(y)}" r="${r}" fill="none" stroke="${css('--bad')}" stroke-width="2.5"/>`;
+  }
+  s+=`<text x="${X(0)}" y="${Y(0)+18}" font-size="12" fill="${css('--muted')}">X−</text><text x="${X(S)-18}" y="${Y(0)+18}" font-size="12" fill="${css('--muted')}">X+</text>`;
+  $('cov').innerHTML=s;
+  // Mini heatmap: sample the (infinite) square lattice at each blue dot and draw
+  // rows flat, exactly as live/replay reconstruct them (no slant correction).
+  // σ chosen so the drawn atom circle (radius 0.28a) edge reads ~45%.
+  const sig=0.22*a;
+  const height=(x,y)=>{let v=0;const i0=Math.floor(x/a),j0=Math.floor(y/a);
+    for(let di=-1;di<=1;di++)for(let dj=-1;dj<=1;dj++){const axx=(i0+di+0.5)*a,ayy=(j0+dj+0.5)*a;v+=Math.exp(-((x-axx)**2+(y-ayy)**2)/(2*sig*sig));}
+    return Math.min(1,v);};
+  // Reconstruction: block (i,k) = height at blue dot (i,k); row k drawn flat at image row k.
+  const ci=$('covImg'), cx=ci.getContext('2d'), CW=ci.width, bw=CW/Rr;
+  cx.clearRect(0,0,CW,CW);
+  cx.textAlign='center'; cx.textBaseline='middle'; cx.font=`600 ${Math.max(9,Math.min(16,bw*0.32))}px system-ui,sans-serif`;
+  for(let k=0;k<Rr;k++)for(let i=0;i<Rr;i++){
+    const x=(i+0.5)*p, y=(k+0.5)*p+slope*x, h=height(x,y);
+    const [r,g,b]=inferno(h); cx.fillStyle=`rgb(${r},${g},${b})`;
+    const px=i*bw, py=(Rr-1-k)*bw; cx.fillRect(px,py,Math.ceil(bw),Math.ceil(bw));
+    if(bw>=22&&$('covNums').checked){cx.fillStyle=h>0.55?'#000':'#fff'; cx.fillText(Math.round(100*h),px+bw/2,py+bw/2);}
+  }
+  const ct=$('covTruth'), tx2=ct.getContext('2d'), TW=ct.width, tim=tx2.createImageData(TW,TW);
+  for(let k=0;k<TW;k++)for(let i=0;i<TW;i++){const x=(i+0.5)/TW*S,y=(k+0.5)/TW*S;tim.data.set([...inferno(height(x,y)),255],4*((TW-1-k)*TW+i));}
+  tx2.putImageData(tim,0,0);
+  // Measured peak capture per atom: brightest sample landing in each atom's cell.
+  const best=new Array(n*n).fill(0);
+  for(let k=0;k<Rr;k++)for(let i=0;i<Rr;i++){const x=(i+0.5)*p,y=(k+0.5)*p+slope*x,ai=Math.floor(x/a),aj=Math.floor(y/a);
+    if(ai>=0&&ai<n&&aj>=0&&aj<n) best[aj*n+ai]=Math.max(best[aj*n+ai],height(x,y));}
+  const seen=best.filter(v=>v>0), bmin=Math.min(...seen), bmax=Math.max(...seen), spread=bmax-bmin;
+  const ppaC=Rr/n, frac=ppaC-Math.floor(ppaC), beat=frac>0.02&&frac<0.98?1/Math.min(frac,1-frac):Infinity;
+  window._covPoint=[ppaC,100*spread];
+  { const f=$('covFlag'), v=fmt(ppaC,2);
+    const [c,t]=ppaC<2?['bad',`<b>${v} px per atom: below the Nyquist minimum.</b> The blobs above are aliasing: a false pattern at the wrong spacing, not atoms.`]
+      :ppaC<5?['warn',`<b>${v} px per atom:</b> the atom spacing is recorded, but atoms are hit at different spots, so their brightness varies (sampling-phase scatter).`]
+      :['ok',`<b>${v} px per atom:</b> meets the 5–6 px rule; every atom renders at nearly the same brightness.`];
+    f.className='anim-flag '+c; f.innerHTML=t; }
+  drawPhase();
+  const ang=Math.atan(slope)*180/Math.PI;
+  const P=params(),D=derive(P.L,P.PPL,P.freq,P.fc,P.a);
+  const real=n*P.a/(2*D.N);
+  $('covStat').innerHTML=`<b>${fmt(ppaC)} px per atom</b> · brightest sample per atom ranges ${Math.round(100*bmin)}–${Math.round(100*bmax)}%: <b style="color:var(${spread<0.15?'--ok':spread<0.3?'--warn':'--bad'})">${Math.round(100*spread)}% scatter</b>${isFinite(beat)?` · sampling phase repeats every ~${fmt(beat,2)} atoms`:' · grid locked to lattice (no beat)'}<br>Slant ${fmt(ang)}° · right-edge shift ${fmt(rise/p)} row${rise/p===1?'':'s'} · atoms covered <b>${inside}/${n*n}</b>, missed <b style="color:var(--bad)">${out}</b>${edge?` · ${edge} within an atom radius of the edge`:''}<br>At the calculator settings (${D.N} rows), a ${n}-atom patch of the chosen feature (${fmt(n*P.a)} nm) slants by <b>${fmt(real)} nm</b>, which is ${fmt(100*real/P.a,2)}% of one atom spacing.`;
+}
+
+const scatterModel=ppa=>100*(1-Math.exp(-((1/ppa)**2)/(4*0.22*0.22)));
+function drawPhase(){
+  const cv=$('phase'); if(!cv||!cv.clientWidth) return;
+  const xs=[],ys=[]; for(let q=0.8;q<=16;q*=1.03){xs.push(q);ys.push(scatterModel(q));}
+  const P=params(),D=derive(P.L,P.PPL,P.freq,P.fc,P.a);
+  chart(cv,[{x:xs,y:ys,c:'--a'}],{xr:[0.8,16],yr:[0,100],xt:[1,2,3,4,6,8,16],yt:[0,15,30,50,100],yf:v=>v+'%',xl:'Pixels per atom spacing (log)',yl:'Peak scatter',
+    bands:[{lo:0,hi:15,c:'--okbg'},{lo:15,hi:30,c:'--warnbg'},{lo:30,hi:100,c:'--badbg'}],
+    rings:[[5.75,9],[3.29,32]], mark:window._covPoint, mark2:[Math.min(16,Math.max(0.8,D.ppa)),scatterModel(D.ppa)]});
+}
+function inferno(t){
+  const st=[[0,0,4],[66,10,104],[147,38,103],[221,81,58],[252,165,10],[252,255,164]];
+  t=Math.max(0,Math.min(1,t))*(st.length-1); const i=Math.min(st.length-2,Math.floor(t)), f=t-i;
+  return st[i].map((c,j)=>Math.round(c+(st[i+1][j]-c)*f));
+}
+function chart(cv,series,o){
+  const dpr=window.devicePixelRatio||1,W=cv.clientWidth,Hh=cv.clientHeight;cv.width=W*dpr;cv.height=Hh*dpr;
+  const x=cv.getContext('2d');x.scale(dpr,dpr);const m={l:50,r:12,t:10,b:36},pw=W-m.l-m.r,ph=Hh-m.t-m.b;
+  const lx=v=>Math.log10(v),[x0,x1]=o.xr.map(lx),[y0,y1]=o.yr, ty=v=>o.logy?lx(v):v;
+  const X=v=>m.l+(lx(v)-x0)/(x1-x0)*pw,Y=v=>m.t+(1-(ty(v)-ty(y0))/(ty(y1)-ty(y0)))*ph;
+  (o.bands||[]).forEach(b=>{x.fillStyle=css(b.c);x.fillRect(m.l,Y(b.hi),pw,Y(b.lo)-Y(b.hi));});
+  x.font='11px system-ui,sans-serif';x.fillStyle=css('--muted');x.strokeStyle=css('--grid');
+  o.yt.forEach(v=>{x.beginPath();x.moveTo(m.l,Y(v));x.lineTo(m.l+pw,Y(v));x.stroke();x.textAlign='right';x.fillText(o.yf(v),m.l-6,Y(v)+4);});
+  o.xt.forEach(v=>{x.beginPath();x.moveTo(X(v),m.t);x.lineTo(X(v),m.t+ph);x.stroke();x.textAlign='center';x.fillText(String(v),X(v),m.t+ph+14);});
+  x.textAlign='center';x.fillText(o.xl,m.l+pw/2,Hh-4);x.save();x.translate(12,m.t+ph/2);x.rotate(-Math.PI/2);x.fillText(o.yl,0,0);x.restore();
+  series.forEach(s=>{x.strokeStyle=css(s.c);x.lineWidth=2;x.beginPath();s.x.forEach((v,i)=>{const px=X(v),py=Y(s.y[i]);i?x.lineTo(px,py):x.moveTo(px,py);});x.stroke();});
+  (o.rings||[]).forEach(r=>{x.strokeStyle=css('--ink');x.lineWidth=1.5;x.beginPath();x.arc(X(r[0]),Y(r[1]),6,0,7);x.stroke();});
+  if(o.mark2){x.fillStyle=css('--ok');x.beginPath();x.arc(X(o.mark2[0]),Y(o.mark2[1]),5,0,7);x.fill();}
+  if(o.mark){x.fillStyle=css('--b');x.beginPath();x.arc(X(o.mark[0]),Y(o.mark[1]),5,0,7);x.fill();}
+}
+
+function render(){
+  const P=params(), D=derive(P.L,P.PPL,P.freq,P.fc,P.a);
+  $('LOut').textContent=P.L; $('PPLOut').textContent=P.PPL; $('NOut').textContent=D.N; $('NOut2').textContent=D.N; $('fOut').textContent=P.freq;
+  $('frOut').textContent=`${fmt(D.fr,4)} Hz`; $('fcOut').textContent=P.fc; $('rotOut').textContent=P.rot;
+  $('kOut').textContent=P.k.toFixed(1); const xc=15.7*P.k; $('xcOut').textContent=Math.round(xc);
+  $('aCustom').style.display=$('feat').value==='custom'?'block':'none';
+  const slantDeg=Math.atan(1/(2*D.N))*180/Math.PI, halfT=D.N*P.lr/D.fr;
+  // loop lag tail: one loop time constant of tip travel, in pixels (trace covers N px in half a line)
+  const tauLoop=1/(2*Math.PI*xc), lagPx=Math.min(D.N,tauLoop*2*D.N*D.fr), lagFrac=lagPx/D.N;
+  const gS=D.ppa>=4?'ok':D.ppa>=2?'warn':'bad', gC=D.contrast>=0.5?'ok':D.contrast>=0.15?'warn':'bad';
+  const tiles=[
+    ['Pixel pitch',fmt(D.p)+' nm',`${fmt(D.ppa)} px per atom · ${D.N} × ${D.N} image`,gS],
+    ['Sampling',D.ppa>=5?'Even atoms':D.ppa>=2?'Uneven atoms':'Aliased',D.ppa<2?'below the 2 px Nyquist minimum: false pattern':D.ppa<5?'above Nyquist (2 px) but below the 5–6 px rule':'meets the 5–6 px rule',D.ppa>=5?'ok':D.ppa>=2?'warn':'bad'],
+    ['Uneven atom brightness',Math.round(scatterModel(D.ppa))+'%','atom-to-atom brightness spread from sampling phase (Fig. 9b)',scatterModel(D.ppa)<15?'ok':scatterModel(D.ppa)<30?'warn':'bad'],
+    ['Tip speed',fmt(D.v)+' nm/s',`atoms pass the tip ${fmt(D.ff)} times per second`,''],
+    ['Atomic contrast kept',Math.round(100*D.contrast)+'%',`after signal bandwidth (${Math.round(100*D.chain)}%) and pixel averaging (${Math.round(100*D.box)}%); smear ${fmt(D.smear)} nm`,gC],
+    ['Feedback follows atoms?',D.ff<xc?'Yes: in Z image':'No: error image only',`atoms pass at ${fmt(D.ff)} Hz; loop follows ≤ ${Math.round(xc)} Hz`,''],
+    ['Feedback lag tail',Math.round(lagPx)+' px',`${Math.round(100*lagFrac)}% of each row distorted after the X turnaround (KIGA ${P.k.toFixed(1)})`,lagFrac<0.05?'ok':lagFrac<0.25?'warn':'bad'],
+    ['Slant',fmt(slantDeg)+'°',`rows tilt by ½ pitch = ${fmt(D.p/2)} nm`,slantDeg<0.5?'ok':slantDeg<2?'warn':'bad'],
+    ['Time per image',fmt(halfT)+' s','one Y half-sweep: rows × re-scan ÷ realized line rate',''],
+  ];
+  $('tiles').innerHTML=tiles.map(t=>`<div class="tile ${t[3]}"><div class="k">${t[0]}</div><div class="v">${t[1]}</div><div class="n">${t[2]}</div></div>`).join('');
+  drawImages(P,D); drawPath(P,D); drawCoverage();
+  const rs=[],as=[];for(let n=4;n<=1024;n*=1.05){rs.push(n);as.push(Math.atan(1/(2*n))*180/Math.PI);}
+  chart($('slant'),[{x:rs,y:as,c:'--a'}],{xr:[4,1024],yr:[0.02,8],logy:true,xt:[4,16,64,256,1024],yt:[0.05,0.1,0.5,1,5],yf:v=>v+'°',xl:'Rows (Pixels/line ÷ 2)',yl:'Slant angle',mark:[D.N,slantDeg]});
+  const fs=[],cs=[];for(let q=0.5;q<=120;q*=1.04){fs.push(q);cs.push(derive(P.L,P.PPL,q,P.fc,P.a).contrast*100);}
+  chart($('speed'),[{x:fs,y:cs,c:'--ok'}],{xr:[0.5,120],yr:[0,100],xt:[0.5,1,3,10,30,100],yt:[0,15,50,100],yf:v=>v+'%',xl:'Requested line rate (Hz)',yl:'Contrast %',mark:[P.freq,D.contrast*100]});
+  const sizes=[2,3,5,8,10,15,20,30,50], ppls=[128,256,512,1024,2048];
+  let h='<tr><th>Scan size ↓ / Pixels/line →</th>'+ppls.map(v=>`<th>${v}<small>${v/2} px</small></th>`).join('')+'</tr>';
+  sizes.forEach(L=>{h+=`<tr><th>${L} nm</th>`;ppls.forEach(pp=>{const d=derive(L,pp,P.freq,P.fc,P.a);const cur=(Math.abs(L-P.L)/P.L<0.06&&pp===P.PPL)?' cur':'';h+=`<td class="${grade(d.ppa,d.contrast)}${cur}">${fmt(d.p)} nm<small>${fmt(d.ppa,2)} px · ${Math.round(100*d.contrast)}%</small></td>`;});h+='</tr>';});
+  $('tbl').innerHTML=h;
+}
+// ---- Figure 1: scanner cross --------------------------------------------------
+(function(){
+  const cv=$('crossCv'), g=cv.getContext('2d'), W=cv.width, H=cv.height;
+  const S=150, ox=W*0.5, oy=H*0.40, KZ=7.5;             // px per unit, origin, px of lift per volt
+  const P=(x,y,z)=>[ox+(x-y)*Math.cos(Math.PI/6)*S, oy+(x+y)*Math.sin(Math.PI/6)*S - z];
+  const STEM=1.15, PLANE=-185, trail=[];
+  let t0=null;
+  function volts(){
+    const X=+$('scX').value, Y=+$('scY').value, Z=+$('scZ').value;
+    const zo=-2*Z, xo=0.6*X, yo=0.6*Y;                  // measured driver mapping
+    return {X,Y,Z,zo,xo,yo, pads:{'Z+X':zo+xo,'Z−X':zo-xo,'Z+Y':zo+yo,'Z−Y':zo-yo}};
+  }
+  function line(a,b,col,w,dash){g.strokeStyle=col;g.lineWidth=w;g.setLineDash(dash||[]);g.beginPath();g.moveTo(...a);g.lineTo(...b);g.stroke();g.setLineDash([]);}
+  function draw(){
+    const v=volts(); $('scXo').textContent=v.X.toFixed(1); $('scYo').textContent=v.Y.toFixed(1); $('scZo').textContent=v.Z.toFixed(1);
+    g.clearRect(0,0,W,H);
+    // sample plane
+    const pl=[[-1.4,-1.4],[1.4,-1.4],[1.4,1.4],[-1.4,1.4]].map(([x,y])=>P(x,y,0)).map(([a,b])=>[a,b-PLANE]);
+    g.fillStyle=css('--panel'); g.strokeStyle=css('--line'); g.lineWidth=1; g.beginPath(); pl.forEach((q,i)=>i?g.lineTo(...q):g.moveTo(...q)); g.closePath(); g.fill(); g.stroke();
+    g.fillStyle=css('--muted'); g.font='12px system-ui,sans-serif'; g.fillText('sample',pl[1][0]-40,pl[1][1]+16);
+    // trail on the sample
+    g.fillStyle='#f2b705';
+    for(const q of trail){g.globalAlpha=.55; g.beginPath(); g.arc(q[0],q[1],1.6,0,7); g.fill();} g.globalAlpha=1;
+    // rest cross (dashed)
+    line(P(-1,0,0),P(1,0,0),css('--muted'),1,[5,4]); line(P(0,-1,0),P(0,1,0),css('--muted'),1,[5,4]);
+    // live cross: arm-end heights from pad voltages
+    const h={'Z+X':v.pads['Z+X']*KZ,'Z−X':v.pads['Z−X']*KZ,'Z+Y':v.pads['Z+Y']*KZ,'Z−Y':v.pads['Z−Y']*KZ}, hc=v.zo*KZ;
+    const ends={'Z+X':P(1,0,h['Z+X']),'Z−X':P(-1,0,h['Z−X']),'Z+Y':P(0,1,h['Z+Y']),'Z−Y':P(0,-1,h['Z−Y'])}, c=P(0,0,hc);
+    // stem/tip: swings toward the raised side by stem x tilt
+    const tx=(h['Z+X']-h['Z−X'])/2/S, ty=(h['Z+Y']-h['Z−Y'])/2/S;   // slopes per unit length
+    const tipX=STEM*tx*3.0, tipY=STEM*ty*3.0;                         // exaggerated sideways swing
+    const tip=P(tipX,tipY,hc-STEM*S*0.95);
+    line(c,tip,css('--ink2'),2.2); g.fillStyle=css('--ink'); g.beginPath(); g.moveTo(tip[0],tip[1]+10); g.lineTo(tip[0]-5,tip[1]); g.lineTo(tip[0]+5,tip[1]); g.closePath(); g.fill();
+    const foot=P(tipX,tipY,0); const f2=[foot[0],foot[1]-PLANE];
+    line([tip[0],tip[1]+10],f2,'#f2b705',1,[2,3]);
+    g.fillStyle='#f2b705'; g.beginPath(); g.arc(f2[0],f2[1],5,0,7); g.fill();
+    if($('scAnim').checked){trail.push(f2); if(trail.length>900) trail.shift();}
+    // arms (black cross)
+    line(ends['Z−X'],ends['Z+X'],'#111',6); line(ends['Z−Y'],ends['Z+Y'],'#111',6);
+    g.fillStyle='#111'; g.beginPath(); g.arc(c[0],c[1],6,0,7); g.fill();
+    // labels
+    g.font='600 13px system-ui,sans-serif';
+    const lab=(k,dx,dy)=>{const q=ends[k]; g.fillStyle=css('--ink'); g.fillText(`${k}  ${v.pads[k].toFixed(1)} V`,q[0]+dx,q[1]+dy);};
+    lab('Z+X',12,6); lab('Z−X',-118,-10); lab('Z+Y',-60,26); lab('Z−Y',12,-10);
+    g.font='12px system-ui,sans-serif'; g.fillStyle=css('--muted');
+    const mx=P(0.55,0,h['Z+X']*0.55+h['Z−X']*0.45*0), my=P(0,-0.55,0);
+    g.fillText('X arm: fast-axis see-saw',ends['Z+X'][0]-70,ends['Z+X'][1]+44);
+    g.fillText('Y arm: slow-axis see-saw',ends['Z−Y'][0]-70,ends['Z−Y'][1]-30);
+    g.fillText(`Z lifts the whole cross: ${v.zo.toFixed(1)} V on every pad before X/Y`,12,20);
+    // pad table
+    const sat=k=>Math.abs(v.pads[k])>=12.95?' style="color:var(--bad);font-weight:700"':'';
+    $('padTab').innerHTML='<tr><th>Pad</th><th>Z part</th><th>X/Y part</th><th>Pad voltage</th></tr>'+
+      ['Z+X','Z−X','Z+Y','Z−Y'].map(k=>{const xy=k.endsWith('X')?(k[1]==='+'?v.xo:-v.xo):(k[1]==='+'?v.yo:-v.yo);
+        return `<tr><td>${k}</td><td>${v.zo.toFixed(1)} V</td><td>${xy>=0?'+':''}${xy.toFixed(1)} V</td><td${sat(k)}>${v.pads[k].toFixed(1)} V</td></tr>`;}).join('');
+  }
+  function frame(ts){
+    if($('scAnim').checked){
+      if(t0===null) t0=ts; const t=(ts-t0)/1000;
+      const tri=(u)=>{u=u-Math.floor(u); return u<.5?4*u-1:3-4*u;};
+      $('scX').value=(5*tri(t/1.2)).toFixed(2); $('scY').value=(5*tri(t/24)).toFixed(2);
+      draw();
+    } else t0=null;
+    requestAnimationFrame(frame);
+  }
+  ['scX','scY','scZ'].forEach(id=>$(id).addEventListener('input',()=>{trail.length=0;draw();}));
+  $('scAnim').addEventListener('change',()=>{trail.length=0;draw();});
+  $('scReset').onclick=()=>{['scX','scY','scZ'].forEach(id=>$(id).value=0);$('scAnim').checked=false;trail.length=0;draw();};
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change',draw);
+  draw(); requestAnimationFrame(frame);
+})();
+
+// ---- Figure 2: animated scan path ------------------------------------------
+(function(){
+  const cv=$('aPath'), g=cv.getContext('2d'), W=cv.width, Hc=cv.height, m=34;
+  const X=x=>m+x*(W-2*m), Y=y=>Hc-m-y*(Hc-2*m);
+  const ATOMS=4, a=1/ATOMS, sg=0.22*a;
+  const height=(x,y)=>{let v=0;const i0=Math.floor(x/a),j0=Math.floor(y/a);
+    for(let di=-1;di<=1;di++)for(let dj=-1;dj<=1;dj++){const ax=(i0+di+.5)*a,ay=(j0+dj+.5)*a;v+=Math.exp(-((x-ax)**2+(y-ay)**2)/(2*sg*sg));}
+    return Math.min(1,v);};
+  let N=8, t=0, ev=0, playing=!matchMedia('(prefers-reduced-motion: reduce)').matches, last=null, hold=0, pics=[], dots=[];
+  const SC=['--s1','--s2','--s3','--s4'];
+  function pos(tt){const line=Math.min(2*N-1,Math.floor(tt)),u=tt-Math.floor(tt);
+    const x=tt>=2*N?0:(u<.5?2*u:2-2*u); const y=tt<=N?tt/N:(2*N-tt)/N; return [x,y,line,u];}
+  function flag(){
+    const ppa=N/ATOMS, f=$('aFlag');
+    const [cls,txt]=ppa>=5?['ok',`${ppa} px per atom: meets the 5–6 px rule, so atoms render evenly.`]
+      :ppa>=2?['warn',`${ppa} px per atom: at or above the Nyquist minimum (2), but below the 5–6 px rule, so atoms come out unevenly bright.`]
+      :['bad',`${ppa} px per atom: below the Nyquist minimum (2); rows skip atoms and the image shows a false pattern.`];
+    f.className='anim-flag '+cls; f.innerHTML=`${txt} <a href="#fn1">¹</a>`;
+  }
+  function reset(){N=+$('aRows').value;t=0;ev=0;hold=0;dots=[];flag();
+    pics=[1,2,3,4].map(k=>{const c=$('aImg'+k);c.width=N;c.height=N;const x=c.getContext('2d');x.fillStyle='#000';x.fillRect(0,0,N,N);return x;});}
+  function sampleUpTo(tt){
+    const total=4*N*N;
+    while(ev<total && (ev+.5)/(2*N)<=tt){
+      const te=(ev+.5)/(2*N), line=Math.floor(ev/(2*N)), k=ev%(2*N);
+      const retr=k>=N, i=retr?2*N-1-k:k, x=(i+.5)/N, y=te<=N?te/N:(2*N-te)/N;
+      const half=line<N?0:1, s=half*2+(retr?1:0), row=line<N?line:2*N-1-line;
+      const [r,gg,b]=inferno(height(x,y)); pics[s].fillStyle=`rgb(${r},${gg},${b})`; pics[s].fillRect(i,N-1-row,1,1);
+      dots.push({x,y,s,half}); ev++;
+    }
+  }
+  function strokePath(t0,t1,alpha){
+    const steps=Math.max(2,Math.ceil((t1-t0)*80));
+    let prev=pos(t0);
+    for(let q=1;q<=steps;q++){
+      const tt=t0+(t1-t0)*q/steps, p=pos(tt);
+      const half=Math.floor(tt-1e-9)<N?0:1, retr=(tt-Math.floor(tt-1e-9))>.5||((tt%1)===0&&tt>0);
+      const s=half*2+((p[3]>=.5||(p[3]===0&&tt>0))?1:0);
+      g.globalAlpha=alpha; g.strokeStyle=css(SC[s]); g.lineWidth=2.4; g.setLineDash(half?[7,5]:[]);
+      g.beginPath(); g.moveTo(X(prev[0]),Y(prev[1])); g.lineTo(X(p[0]),Y(p[1])); g.stroke();
+      prev=p;
+    }
+    g.setLineDash([]); g.globalAlpha=1;
+  }
+  function draw(){
+    g.clearRect(0,0,W,Hc);
+    // surface bumps
+    for(let i=0;i<ATOMS;i++)for(let j=0;j<ATOMS;j++){
+      const cx=X((i+.5)*a), cy=Y((j+.5)*a), r=0.3*a*(W-2*m);
+      const gr=g.createRadialGradient(cx,cy,0,cx,cy,r); gr.addColorStop(0,css('--line')); gr.addColorStop(1,'rgba(0,0,0,0)');
+      g.fillStyle=gr; g.beginPath(); g.arc(cx,cy,r,0,7); g.fill();
+    }
+    g.strokeStyle=css('--muted'); g.lineWidth=1; g.strokeRect(X(0),Y(1),W-2*m,Hc-2*m);
+    g.fillStyle=css('--muted'); g.font='13px system-ui,sans-serif'; g.textAlign='center';
+    g.fillText('X−',X(0),Hc-10); g.fillText('X+',X(1),Hc-10);
+    g.textAlign='left'; g.fillText('Y+',4,Y(1)+5); g.fillText('Y−',4,Y(0)+5);
+    const inY2=t>N;
+    if(inY2) strokePath(0,N,.22);
+    strokePath(inY2?N:0,Math.min(t,2*N),1);
+    for(const d of dots){g.globalAlpha=(inY2&&d.half===0)?.3:1; g.fillStyle=css(SC[d.s]); g.beginPath(); g.arc(X(d.x),Y(d.y),3.2,0,7); g.fill();}
+    g.globalAlpha=1;
+    const p=pos(Math.min(t,2*N-1e-6)); g.strokeStyle=css('--ink'); g.lineWidth=2; g.beginPath(); g.arc(X(p[0]),Y(p[1]),8,0,7); g.stroke();
+    g.fillStyle=css('--ink'); g.beginPath(); g.arc(X(p[0]),Y(p[1]),2.5,0,7); g.fill();
+    const half=p[2]<N?'Y+ half (Y rising)':'Y− half (Y falling)', lineNo=p[2]<N?p[2]+1:p[2]-N+1;
+    const pass=p[3]<.5?'trace, X− → X+':'retrace, X+ → X−', col=SC[(p[2]<N?0:2)+(p[3]<.5?0:1)];
+    $('aStatus').innerHTML=t>=2*N?'Y cycle complete: four images recorded':`<b>${half}</b> · line ${lineNo} of ${N} · <span style="color:var(${col});font-weight:600">${pass}</span>`;
+  }
+  function frame(ts){
+    const dt=last===null?0:Math.min(.1,(ts-last)/1000); last=ts;
+    if(playing){
+      if(t>=2*N){hold+=dt; if(hold>1.5) reset();}
+      else t=Math.min(2*N,t+dt*+$('aSpd').value);
+    }
+    sampleUpTo(t); draw(); requestAnimationFrame(frame);
+  }
+  $('aPlay').textContent=playing?'Pause':'Play';
+  $('aPlay').onclick=()=>{playing=!playing;$('aPlay').textContent=playing?'Pause':'Play';};
+  $('aStep').onclick=()=>{playing=false;$('aPlay').textContent='Play';if(t>=2*N)reset();else t=Math.min(2*N,Math.floor(t)+1);};
+  $('aReset').onclick=()=>reset();
+  $('aRows').onchange=()=>reset();
+  const so=()=>{$('aSpdOut').textContent=$('aSpd').value;}; $('aSpd').oninput=so; so();
+  reset(); requestAnimationFrame(frame);
+})();
+
+
+// ---- Figure 22: action items ------------------------------------------------
+(function(){
+  const CAT={a:['Analysis / setting','#2f6fd0'],b:['Bench','#2f9a6a'],f:['Firmware / tooling','#c99a1c'],h:['Hardware','#c8433a'],d:['Documentation','#8a4fc0']};
+  const A=[
+   // id, category, action, answers, if positive, lead, ease, impact
+   [1,'b','KIGA sweep 1.14 → 2.3 → 4.6 → 9 on one area, one line rate','Does a faster loop shrink the lag profile that dominates the images? Where does ~200 Hz ringing start?','Set a new default KIGA (about ⅔ of the last clean value)',3,3,3],
+   [2,'b','Slower lines (≤10 Hz) on the same area','Does the lag tail shrink as predicted (Figure 3 tile, loop simulation)?','Change the default line rate; pair with KIGA',3,3,3],
+   [3,'a','Use the loop simulation to predict the lag tail for any KIGA and line rate','Which settings should keep the lag under ~5% of a row?','Pick the bench sweep points before bench time',3,3,2],
+   [4,'b','Halted, tunnelling raw captures (a few 30 s holds)','What are the true vibration frequencies, without the strobe effect?','Names the 159.5 vs 231 Hz tone and any other lines',3,3,2],
+   [5,'b','Tap test during a halted capture: lever, sample plate, frame, table, base','Which part rings at which frequency?','Points the stiffening effort at one part',3,3,3],
+   [6,'b','Isolation-plate friction test: nudge the plate free, phone accelerometer, compare spectra','Is the plate sticking on its brass posts?','Low-friction bushings, post alignment, or flexure guides',2,3,3],
+   [7,'a','Scan once at 384 pixels per line (line rate not 390.625 Hz ÷ n)','Is the streak tone from ~159.5 Hz or ~231 Hz?','Same as 4, from scan data instead',2,2,2],
+   [8,'b','Sound sweep 100–300 Hz near the rig','Does room sound excite a resonance?','Acoustic shielding of the cage',2,3,2],
+   [9,'a','Laptop on battery during a capture','Is there a ground loop through the PC?','Isolated USB path or a powered hub',1,3,2],
+   [10,'a','Status stream off (STRM 0), and 512 vs 256 pixels per line, during scans','Are the 202.9 Hz line or line-locked patterns from our own electronics?','Change the stream rate or the line transmission',1,3,1],
+   [11,'a','Non-tunnelling scan at 195 Hz lines','How big is electrical pickup locked to each line at today\'s rates?','Ground and USB changes, if large',1,3,1],
+   [12,'b','Scenario zoom ladders: 1.5× steps, down and back up, ≥10 frames, slow lines, two offsets','How exactly does the zoom track the command? Any hysteresis or offset dependence?','Keep the zoom as is, or build a scan-size-dependent correction',1,2,3],
+   [13,'b','Lateral calibration on a known lattice (graphite) plus a creep measurement','What does 1 nm really mean on this scanner?','Replace the 5 nm/V placeholder; fixes every nm in the GUI',1,2,3],
+   [14,'f','Z sine-sweep (lock-in) firmware test','The mechanical loop\'s full frequency response','Measured resonances to design against; safe KIGA limit',3,2,3],
+   [15,'f','Fold + repeat + both-Y-halves + zoom checks built into replay','Which features pass as real morphology?','Standard processing for every report',2,2,3],
+   [16,'f','Log the real X minimum and maximum per line (DIAG)','Is the commanded scan size really applied?','Removes a whole class of doubt about zoom',1,3,1],
+   [17,'f','Move or split the per-line USB transmission','Does line transmission leave a mark in the image?','Firmware change to transmission timing',1,2,1],
+   [18,'h','Whole-frame buffer and push at the Y turnaround (needs PSRAM for 1 MB frames)','Same as 17, fully','Firmware and hardware change; only if 17 shows an effect',1,1,1],
+   [19,'f','Code-review fixes: retract direction, setpoint clamp, BUSY wait, line numbering','Correctness and safety, not resolution','Required before long unattended runs',1,2,2],
+   [20,'h','Softer or strain-relieved cables from the cubby to the platform','Do the cables short-circuit the isolation?','Cable routing standard',2,2,2],
+   [21,'h','Stiffer, more compact mechanical loop (future wedge assembly replacing the longboard)','Raises the head\'s resonances away from room noise','The next-generation head',2,1,3],
+   [22,'d','Photograph and measure the isolation box; confirm the installed preamp version and gain','Documentation gaps found in this work','Accurate models and onboarding',1,3,1]
+  ];
+  let sortKey='score', dir=-1;
+  const score=r=>r[5]+r[6]+r[7];
+  function table(){
+    const rows=A.slice().sort((p,q)=>{const k={id:0,lead:5,ease:6,impact:7}[sortKey]; const va=sortKey==='score'?score(p):p[k], vb=sortKey==='score'?score(q):q[k]; return dir*(va-vb)||p[0]-q[0];});
+    const h=(k,l)=>`<th data-k="${k}" class="sortable">${l}${sortKey===k?(dir<0?' ▾':' ▴'):''}</th>`;
+    const dots=n=>'●'.repeat(n)+'<span class="dim">'+'●'.repeat(3-n)+'</span>';
+    $('actTab').innerHTML=`<tr>${h('id','#')}<th>Type</th><th>Action</th><th>What it answers</th><th>If positive</th>${h('lead','Lead')}${h('ease','Ease')}${h('impact','Impact')}${h('score','Score')}</tr>`+
+      rows.map(r=>`<tr id="act${r[0]}"><td>${r[0]}</td><td><span class="cat" style="background:${CAT[r[1]][1]}">${CAT[r[1]][0]}</span></td><td>${r[2]}</td><td>${r[3]}</td><td>${r[4]}</td><td class="sc">${dots(r[5])}</td><td class="sc">${dots(r[6])}</td><td class="sc">${dots(r[7])}</td><td class="sc"><b>${score(r)}</b></td></tr>`).join('');
+    document.querySelectorAll('#actTab th.sortable').forEach(th=>th.onclick=()=>{const k=th.dataset.k; if(sortKey===k) dir=-dir; else {sortKey=k; dir=k==='id'?1:-1;} table();});
+  }
+  function chart(){
+    const W=460,H=360,m={l:56,r:16,t:16,b:46}, pw=W-m.l-m.r, ph=H-m.t-m.b;
+    const X=e=>m.l+(e-0.5)/3*pw, Y=l=>m.t+(1-(l-0.5)/3)*ph;
+    let g=`<rect x="${m.l}" y="${m.t}" width="${pw}" height="${ph}" fill="none" stroke="${css('--line')}"/>`;
+    g+=`<rect x="${X(2.5)}" y="${Y(3.5)}" width="${X(3.5)-X(2.5)}" height="${Y(2.5)-Y(3.5)}" fill="${css('--okbg')}" opacity=".7"/>`;
+    [1,2,3].forEach(v=>{g+=`<text x="${X(v)}" y="${H-24}" text-anchor="middle" font-size="12" fill="${css('--muted')}">${['hard','medium','easy'][v-1]}</text>`;
+      g+=`<text x="${m.l-8}" y="${Y(v)+4}" text-anchor="end" font-size="12" fill="${css('--muted')}">${['low','med','high'][v-1]}</text>`;});
+    g+=`<text x="${m.l+pw/2}" y="${H-6}" text-anchor="middle" font-size="12" fill="${css('--ink2')}">Ease →</text>`;
+    g+=`<text transform="translate(14,${m.t+ph/2}) rotate(-90)" text-anchor="middle" font-size="12" fill="${css('--ink2')}">Lead likelihood →</text>`;
+    const cell={};
+    A.forEach(r=>{const key=r[6]+','+r[5]; const k=cell[key]=(cell[key]||0)+1; r._k=k;});
+    const cnt={}; A.forEach(r=>{const key=r[6]+','+r[5]; cnt[key]=(cnt[key]||0)+1;});
+    A.forEach(r=>{const key=r[6]+','+r[5], n=cnt[key], k=r._k-1, cols=Math.ceil(Math.sqrt(n)), rowsN=Math.ceil(n/cols);
+      const dx=((k%cols)-(cols-1)/2)*0.26, dy=(Math.floor(k/cols)-(rowsN-1)/2)*0.26;
+      const cx=X(r[6]+dx), cy=Y(r[5]-dy), rad=6+r[7]*3.2;
+      g+=`<a href="#act${r[0]}"><circle cx="${cx}" cy="${cy}" r="${rad}" fill="${CAT[r[1]][1]}" fill-opacity=".8" stroke="#fff" stroke-width="1"><title>#${r[0]} ${r[2]} (lead ${r[5]}, ease ${r[6]}, impact ${r[7]})</title></circle>`+
+           `<text x="${cx}" y="${cy+4}" text-anchor="middle" font-size="10.5" font-weight="700" fill="#fff" pointer-events="none">${r[0]}</text></a>`;});
+    $('actChart').innerHTML=g;
+  }
+  table(); chart();
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change',chart);
+})();
+
+
+// ---- Figure 14b: interactive feedback-lag simulation --------------------------
+(function(){
+  const logm=(lo,hi)=>({to:u=>lo*Math.pow(hi/lo,u),from:v=>Math.log(v/lo)/Math.log(hi/lo)});
+  const mF=logm(2,400), mK=logm(0.5,20), mW=logm(1,50);
+  const P={sep24:[195.3,1.14,10.5],slow:[10,1.14,10.5],fast:[195.3,9,10.5],both:[10,4.6,10.5],big:[195.3,1.14,25]};
+  function setp(k){const v=P[k]; $('lgFl').value=mF.from(v[0]); $('lgK').value=mK.from(v[1]); $('lgW').value=mW.from(v[2]); run();}
+  function plot(cv,series,xl,yl,ylim){
+    const g=cv.getContext('2d'),W=cv.width,H=cv.height,m={l:52,r:12,t:12,b:38}; g.clearRect(0,0,W,H);
+    let xs=[],ys=[]; series.forEach(s=>{xs.push(...s.x);ys.push(...s.y);});
+    const x0=Math.min(...xs),x1=Math.max(...xs); let y0=ylim?ylim[0]:Math.min(...ys),y1=ylim?ylim[1]:Math.max(...ys); const pad=(y1-y0)*.08||1; y0-=pad;y1+=pad;
+    const X=v=>m.l+(v-x0)/(x1-x0)*(W-m.l-m.r), Y=v=>m.t+(1-(v-y0)/(y1-y0))*(H-m.t-m.b);
+    g.strokeStyle=css('--line'); g.strokeRect(m.l,m.t,W-m.l-m.r,H-m.t-m.b);
+    g.fillStyle=css('--muted'); g.font='12px system-ui,sans-serif'; g.textAlign='right';
+    for(let k=0;k<=4;k++){const v=y0+(y1-y0)*k/4; g.fillText(v.toFixed(Math.abs(y1-y0)<2?2:1),m.l-6,Y(v)+4);}
+    g.textAlign='center'; for(let k=0;k<=4;k++){const v=x0+(x1-x0)*k/4; g.fillText(v.toFixed(x1<20?1:0),X(v),H-m.b+16);}
+    g.fillText(xl,(m.l+W-m.r)/2,H-4); g.save(); g.translate(13,(m.t+H-m.b)/2); g.rotate(-Math.PI/2); g.fillText(yl,0,0); g.restore();
+    series.forEach(s=>{g.strokeStyle=s.c; g.lineWidth=s.w||2; g.beginPath(); s.x.forEach((v,k)=>{k?g.lineTo(X(v),Y(s.y[k])):g.moveTo(X(v),Y(s.y[k]));}); g.stroke();});
+  }
+  function lev(a){const n=a.length;let sx=0,sy=0,sxx=0,sxy=0;for(let i=0;i<n;i++){sx+=i;sy+=a[i];sxx+=i*i;sxy+=i*a[i];}const b=(n*sxy-sx*sy)/(n*sxx-sx*sx),c=(sy-b*sx)/n;return a.map((v,i)=>v-(b*i+c));}
+  function run(){
+    const fl=mF.to(+$('lgFl').value), K=mK.to(+$('lgK').value), Wn=mW.to(+$('lgW').value), tilt=+$('lgT').value, bump=+$('lgB').value;
+    $('lgFlO').textContent=fl<20?fl.toFixed(1):fl.toFixed(1).replace(/\.0$/,''); $('lgKO').textContent=K.toFixed(2); $('lgWO').textContent=Wn<30?Wn.toFixed(1):Wn.toFixed(0);
+    $('lgTO').textContent=tilt.toFixed(2); $('lgBO').textContent=bump.toFixed(1);
+    const tau=1/(2*Math.PI*15.7*K), N=1024, half=N/2, dt=(1/fl)/N, a=1-Math.exp(-dt/tau);
+    const xpos=k=>(k<half?k/half:2-k/half)*Wn;
+    const surf=x=>tilt*x+bump*Math.exp(-(((x-0.62*Wn)/0.72)**2));
+    const tgt=new Float64Array(N); for(let k=0;k<N;k++) tgt[k]=surf(xpos(k));
+    let z=tgt.reduce((p,q)=>p+q,0)/N; const zs=new Float64Array(N);
+    const cycles=Math.min(400,Math.max(20,Math.ceil(8*tau*fl)));
+    for(let c=0;c<cycles;c++) for(let k=0;k<N;k++){z+=a*(tgt[k]-z); zs[k]=z;}
+    const xt=[],zt=[],st=[],xr=[],zr=[];
+    for(let k=0;k<half;k++){xt.push(xpos(k)); zt.push(zs[k]); st.push(tgt[k]);}
+    for(let k=N-1;k>=half;k--){xr.push(xpos(k)); zr.push(zs[k]);}
+    const xs=[];for(let i=0;i<=200;i++)xs.push(i/200*Wn);
+    plot($('lgA'),[{x:xs,y:xs.map(surf),c:css('--ink'),w:2.5},{x:xt,y:zt,c:'#2f6fd0'},{x:xr,y:zr,c:'#e0782f'}],'position along the row (nm)','height (pm)');
+    const px=256, ds=k=>{const o=[];for(let i=0;i<px;i++){const j=Math.floor(i*k.length/px);o.push(k[j]);}return o;};
+    const T=lev(ds(zt)), R=lev(ds(zr)), S=lev(ds(st)), ix=[...Array(px).keys()];
+    plot($('lgB2'),[{x:ix,y:T,c:'#2f6fd0'},{x:ix,y:R,c:'#e0782f'}],'pixel along the row','height after levelling (pm)');
+    const m=st.reduce((p,q)=>p+q,0)/st.length; let num=0,den=0; for(let i=0;i<st.length;i++){num+=(zt[i]-st[i])**2; den+=(st[i]-m)**2;}
+    const follows=Math.max(0,Math.min(1,1-Math.sqrt(num/den)));
+    const lagpx=Math.min(256,tau*2*256*fl);
+    const NR=+$('lgN').value, PPL=2*NR, spp=Math.max(1,Math.round(1e5/(fl*PPL))), flr=1e5/(spp*PPL);
+    const lagFrac=Math.min(1,2*tau*flr), tImg=NR/flr, req=1e5/((spp+0.5)*PPL), fmt1=v=>v<20?v.toFixed(1):Math.round(v).toString(), reqS=fmt1(req), lo=1e5/((spp+1)*PPL), hi=1e5/(spp*PPL);
+    $('lgSet').innerHTML=`<b>Settings used for every row below:</b> line rate <b>${flr.toFixed(1)} lines/s</b> (what the firmware actually runs at ${PPL} pixels per line; enter <b>${reqS} Hz</b> in the GUI; any request above ${fmt1(lo)} and up to ${fmt1(hi)} Hz gives this rate) · KIGA <b>${K.toFixed(2)}</b> · <b>${NR} × ${NR}</b> image (GUI Pixels/line ${PPL}) · line re-scan off · window: per row (not the Window slider, which only drives the plots).`;
+    const TG=[['Gold ledges and morphology','~3 nm features',25,3],['Au(111) herringbone','6.3 nm period',20,6.3],
+             ['Si(111) 7×7 unit cell','2.69 nm',10,2.69],['Si(111) 7×7 adatoms','~0.77 nm',5,0.77],
+             ['Au(111) atoms','0.288 nm',5,0.288],['Graphite atoms','0.246 nm',4,0.246]];
+    const cls=(v,a,b)=>v<=a?'g':v<=b?'w':'r'; const pc=v=>v<0.01?(v*100).toFixed(1)+'%':Math.round(v*100)+'%';
+    let h='<tr><th>Target</th><th>Feature size</th><th>GUI settings</th><th>Pixels per feature</th><th>Time per image</th><th>Lag tail</th><th>Drift shear (20–60 pm/s)</th></tr>';
+    for(const [name,fs,Wt,a] of TG){
+      const ppf=a/(Wt/NR), sh1=0.020*tImg/Wt, sh2=0.060*tImg/Wt;
+      h+=`<tr><td>${name}</td><td>${fs}</td><td>Scan size ${Wt} nm · Pixels/line ${PPL} · Line rate ${reqS} Hz</td><td class="${ppf>=5?'g':ppf>=2?'w':'r'}">${ppf>=100?Math.round(ppf):ppf.toFixed(1)}</td>`+
+         `<td>${tImg<60?tImg.toFixed(1)+' s':(tImg/60).toFixed(1)+' min'}</td><td class="${cls(lagFrac,0.05,0.25)}">${lagFrac>=1?'whole row':Math.round(lagFrac*100)+'%'}</td>`+
+         `<td class="${cls(sh2,0.05,0.15)}">${pc(sh1)}–${pc(sh2)}</td></tr>`;
+    }
+    $('lgTgt').innerHTML=h;
+    $('lgRead').innerHTML=`Loop response time <b>${(tau*1000).toFixed(1)} ms</b> · line time <b>${(1000/fl).toFixed(1)} ms</b> · Z follows <b>${Math.round(follows*100)}%</b> of the surface along the row · lag tail <b>${lagpx>=255?'the whole row':Math.round(lagpx)+' px'}</b> of 256`;
+  }
+  document.querySelectorAll('#lagfig .presets button').forEach(b=>b.onclick=()=>setp(b.dataset.p));
+  ['lgFl','lgK','lgW','lgT','lgB','lgN'].forEach(id=>$(id).addEventListener('input',run));
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change',run);
+  setp('sep24');
+})();
+
+['L','PPL','f','fc','lr','feat','aCustom','rot','k','exag','chE','chZ'].forEach(id=>$(id).addEventListener('input',render));
+['cn','cr','cm','cx','covNums'].forEach(id=>$(id).addEventListener('input',drawCoverage));
+window.addEventListener('resize',render);
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',render);
+render();
+</script>
+</body>
+</html>
+
+</body></html>

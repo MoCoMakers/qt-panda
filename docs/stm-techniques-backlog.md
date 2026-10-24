@@ -16,6 +16,9 @@
 | Piezo creep compensation | Model the logarithmic creep after offset or size changes; settle or pre-compensate | Offset moves and scan restarts caused jumps on Oct 22 | not yet |
 | Hysteresis / nonlinearity correction | Open-loop correction models, or closed-loop scanners with position sensors | Up/down-sweep offset (~1 nm) and trace/retrace mismatch | partial (measured, not corrected) |
 | Settling time after approach / large moves | Wait for thermal and mechanical relaxation before imaging | The Oct 22 drift was 4 nm/min right after a crash and motor moves | partial (habit, not measured) |
+| Orthogonal-scan drift correction | Scan the same area with the fast axis along X, then along Y; drift distorts the two differently and can be solved for (reported for STEM and scanning probe images, Ophus et al., Ultramicroscopy 2016, to verify) | Our cross-hatch sequence (OI-17) | partial (designed) |
+| Lag / bandwidth deconvolution | Treat the fast-axis smear as a known convolution (loop lag, preamp RC) and invert it | `docs/ai/hypotheses/stretch-compensation.md`: a shift alone gave +0.006 end to end; deconvolution untested. The combined Z + current height estimate (scan simulator) removes loop lag without deconvolving | not yet |
+| Line-by-line drift registration | Place each scan line by its own time instead of one shift per frame | Report v2: up ↔ down agreement 0.42 → 0.49 | rediscovered |
 | Slope / tilt feed-forward | Pre-tilt the Z drive to match the sample plane so the loop only handles topography | Reduces the load on a slow loop and the lag tails | not yet |
 
 ## Feedback loop
@@ -68,3 +71,13 @@
 | Adaptive line rate | Slow down where topography is steep | Lag-dominated images | not yet |
 | Non-raster scans (spiral, Lissajous) | Smoother scanner motion, fewer turnarounds | Turnaround lag tails | not yet |
 | Video-rate STM | Fast scanning with high-bandwidth mechanics | Context for what limits us | not yet |
+
+## Scan paths
+
+| Technique | What it is | Why it matters | Status |
+|---|---|---|---|
+| Rotated raster | Scan at an angle to the stage axes | Separates sample features from axis-bound artefacts; reveals X/Y calibration mismatch as shear | not yet (OI-17) |
+| Spiral scanning | Archimedean or Fermat spirals driven by smooth sines, popular for fast scanning because there are no turnarounds | Smooth drive below the 158.7 Hz mode; loses trace/retrace lag cancellation unless run as out-in pairs | not yet (OI-17) |
+| Lissajous / rose scanning | Each axis a pure sine; the pattern precesses to fill the area | Smoothest drive; uneven density; frequent centre crossings measure drift | not yet (OI-17) |
+| Input shaping | Pre-filter the drive to cancel a known resonance | Lets rasters and returns run faster without ringing the 158.7 Hz mode | not yet |
+| Piezo hysteresis models | Prandtl–Ishlinskii, Bouc–Wen: history-dependent commanded → actual position | Up/down offset and path-dependent distortion in the simulator | not yet |

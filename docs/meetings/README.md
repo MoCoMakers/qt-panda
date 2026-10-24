@@ -4,6 +4,7 @@ Bench-meeting plans and their outcomes, one file per meeting topic. Each file st
 
 | file | topic | status |
 |---|---|---|
+| [`2026-10-15-scan-resolution-limits/`](2026-10-15-scan-resolution-limits/README.md) | Oct 15 review report "Scan Resolution Limits" (sampling, speed, slant; Sep 24 gold data; action items 1-22). Exported copy, open `index.html` | historical reference: priorities superseded by `docs/test-plans/` |
 | [`2026-10-streak-followup-plan.md`](2026-10-streak-followup-plan.md) | Horizontal streaks: KIGA decision, gain and line-rate sweeps (incl. 3 Hz), code review fixes, cross-hatch go/no-go | planned |
 
 ## Conventions
