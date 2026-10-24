@@ -281,6 +281,7 @@ class EmulatedSerial:
             self._engaged = False
             self._is_const_current = False
             self._stop_scan()
+            self._dac_z = 0          # fully retracted, like FW retract() (F2)
         elif cmd == "RUN ":
             self._start_scan()
         elif cmd == "HALT":

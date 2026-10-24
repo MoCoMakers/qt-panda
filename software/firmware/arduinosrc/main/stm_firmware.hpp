@@ -608,10 +608,17 @@ public:
         stm_status.is_const_current = false;
         stm_status.is_scanning      = false;
         interrupts();
-        // Move Z to safe-retracted position using legacy path
+        // Move Z to the fully retracted end (DAC 0, same as the GUI Z slider
+        // pulled to "Away"). The old absolute 50000 sits near the approach
+        // sweep's extended end, so RTRC moved the tip TOWARD the sample
+        // whenever Z was below 50000 (F2, 2026-10-23).
         bool savedBlock = blockISRControl;
         blockISRControl = true;
-        set_dac_z(50000);
+        set_dac_z(0);
+        noInterrupts();
+        z_pos    = -MAX_Z_POS;                        // integrator matches the retracted Z
+        iTermISR = (int64_t)z_pos << 32;
+        interrupts();
         blockISRControl = savedBlock;
     }
 
